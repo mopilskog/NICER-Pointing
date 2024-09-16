@@ -6,8 +6,12 @@ from termcolor import colored
 from astroquery.simbad import Simbad
 from jaxspec.model.multiplicative import Tbabs
 from jaxspec.model.additive import Powerlaw
-from jax.config import config
+#from jax.config import config
+from jax import config
 from jaxspec.data.instrument import Instrument
+from jaxspec.data.observation import Observation
+from jaxspec.data import ObsConfiguration
+from jaxspec.data.util import data_path_finder
 
 # ---------- import class ---------- #
 
@@ -975,6 +979,7 @@ def main():
         select_master_sources_around_region(ra=right_ascension, dec=declination, radius=radius.value, output_name=output_name)
         select_catalogsources_around_region(output_name=output_name)
         master_sources = s_f.load_master_sources(output_name)
+        print("output name: ", output_name)
         s_f.master_source_plot(master_sources=master_sources, simulation_data=simulation_data, number_graph=len(master_sources))
     except Exception as error :
         print(f"{colored('An error occured : ', 'red')} {error}")
@@ -993,13 +998,20 @@ def main():
     model = Tbabs() * Powerlaw()
 
     # load instrument parameters
-    instrument = Instrument.from_ogip_file(nicer_data_arf, nicer_data_rmf, exposure=args.exp_time)
+    instrument = Instrument.from_ogip_file(nicer_data_rmf, nicer_data_arf)
+    #instrument = Instrument.from_ogip_file(nicer_data_arf, nicer_data_rmf, exposure=args.exp_time)
+    
+    obsconfig= ObsConfiguration.mock_from_instrument(instrument, exposure=args.exp_time)
 
+    #observation = Observation.from_ogip_container(ogip_container)
+    #obsconfig = ObsConfiguration.from_instrument(instrument, observation)
+    
     # load all of the sources spetcra
-    total_spectra, total_var_spectra = j_f.modeling_source_spectra(nearby_sources_table=nearby_sources_table, instrument=instrument, model=model, var_index=var_index)
-
+    total_spectra, total_var_spectra = j_f.modeling_source_spectra(nearby_sources_table=nearby_sources_table, obsconfig=obsconfig, model=model, var_index=var_index)
+    #total_spectra, total_var_spectra = j_f.modeling_source_spectra(nearby_sources_table=nearby_sources_table, instrument=instrument, model=model, var_index=var_index)
+    
     # plot of all spectra data
-    data = j_f.total_plot_spectra(total_spectra=total_spectra, total_var_spectra=total_var_spectra, instrument=instrument, simulation_data=simulation_data, catalog_name=args.catalog)
+    data = j_f.total_plot_spectra(total_spectra=total_spectra, total_var_spectra=total_var_spectra,obsconfig=obsconfig, simulation_data=simulation_data, catalog_name=args.catalog)
 
     # output spectre plot
     j_f.write_txt_file(simulation_data=simulation_data, data=data)

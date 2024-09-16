@@ -146,3 +146,16 @@ dmypy.json
 data/catalog_data/
 data/NICER_data/
 data/softwares/
+
+# Ignoring Maps directory
+Maps/
+
+
+# Ignoring modeling result directory
+modeling_result/
+
+# Ignoring pimms script
+pimms_script.xco
+
+# Ignoring python directory or file
+python

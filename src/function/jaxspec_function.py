@@ -72,7 +72,7 @@ def cross_catalog_index(output_name: str, key: str, iauname: str, nearby_sources
     return var_index_in_nearby_sources_table
 
 
-def modeling_source_spectra(nearby_sources_table: Table, instrument, model, var_index) -> List:
+def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_index) -> List:
     """
     Generates model spectra for astronomical sources using specified instrument and model parameters.
 
@@ -83,7 +83,7 @@ def modeling_source_spectra(nearby_sources_table: Table, instrument, model, var_
 
     Args:
         nearby_sources_table (Table): An astropy Table containing data of nearby astronomical sources.
-        instrument: An object representing the instrument, with parameters for generating spectra.
+        obsconfig: An ObsConfiguration object containing the data  of the folding model, which is the link between the unfolded and folded spectra.
         model: The spectral model to be applied for spectra generation.
         var_index (List[int]): Indices of variable sources in the nearby sources table.
 
@@ -113,7 +113,7 @@ def modeling_source_spectra(nearby_sources_table: Table, instrument, model, var_
             }
         }
         
-        spectra = fakeit_for_multiple_parameters(instrument=instrument, model=model, parameters=parameters) * vignet_factor
+        spectra = fakeit_for_multiple_parameters(instrument=obsconfig, model=model, parameters=parameters) * vignet_factor
 
         if index in var_index:
             total_var_spectra.append(spectra)
@@ -123,7 +123,7 @@ def modeling_source_spectra(nearby_sources_table: Table, instrument, model, var_
     return total_spectra, total_var_spectra
 
 
-def total_plot_spectra(total_spectra: List, total_var_spectra: List, instrument, simulation_data: Dict, catalog_name: str) -> Dict:
+def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, simulation_data: Dict, catalog_name: str) -> Dict:
     """
     Generates and saves a plot of spectral modeling data and returns a summary of the spectral data.
 
@@ -134,7 +134,7 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, instrument,
     Args:
         total_spectra (List): A list containing spectra from nearby sources.
         total_var_spectra (List): A list containing variability spectra data.
-        instrument: An object containing instrument-specific data such as output energies.
+        obsconfig: An ObsConfiguration object containing the data  of the folding model, which is the link between the unfolded and folded spectra.
         simulation_data (Dict): Dictionary containing simulation parameters and paths.
         catalog_name (str): Name of the catalog used for spectral modeling.
 
@@ -184,7 +184,7 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, instrument,
 
     ax0 = axes[0]
     for spectra in total_spectra:
-        ax0.step(instrument.out_energies[0],
+        ax0.step(obsconfig.out_energies[0],
                 np.median(spectra, axis=0),
                 where="post")
     ax0.set_title("Spectra from Nearby Sources")
@@ -201,7 +201,7 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, instrument,
     y_lower = np.median(spectrum_summed, axis=0) - np.median(spectrum_var_summed, axis=0)
 
     ax1 = axes[1]
-    ax1.step(instrument.out_energies[0],
+    ax1.step(obsconfig.out_energies[0],
             np.median(spectrum_summed, axis=0),
             where='post', color='black'
             )
@@ -209,10 +209,10 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, instrument,
     ax1.set_title("Sum of spectra")
 
     ax2 = axes[2]
-    ax2.errorbar(instrument.out_energies[0], y=np.median(spectrum_summed, axis=0), yerr=np.median(spectrum_var_summed, axis=0), 
+    ax2.errorbar(obsconfig.out_energies[0], y=np.median(spectrum_summed, axis=0), yerr=np.median(spectrum_var_summed, axis=0), 
                 fmt="none", ecolor='red', capsize=2, capthick=3,
                 label='error')
-    ax2.step(instrument.out_energies[0], np.median(spectrum_summed, axis=0), color='black', label="sum powerlaw")
+    ax2.step(obsconfig.out_energies[0], np.median(spectrum_summed, axis=0), color='black', label="sum powerlaw")
     ax2.set_title("Spectrum Summed with var sources error")
     ax2.legend(loc='upper right')
     ax2.loglog()
@@ -223,7 +223,7 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, instrument,
     plt.show()
     
     data = {
-        "Energy": instrument.out_energies[0],
+        "Energy": obsconfig.out_energies[0],
         "Counts": np.median(spectrum_summed, axis=0),
         "Upper limit": y_upper,
         "Lower limit": y_lower
