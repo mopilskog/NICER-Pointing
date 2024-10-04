@@ -13,7 +13,7 @@ Submodules
    src.catalog_class.MatchClass
    src.catalog_class.SwiftClass
    src.catalog_class.XmmClass
-   src.catalog_class.eRositaClass
+   src.catalog_class.eFEDSClass
 
 Module contents
 ---------------

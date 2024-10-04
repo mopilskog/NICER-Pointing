@@ -125,17 +125,17 @@ def choose_catalog(args_catalog) -> Tuple[str, str]:
                 valid_path = get_valid_file_path(swift_path)
                 print("-"*50, "\n")
                 return valid_path, args_catalog
-            elif args_catalog == 'eRosita':
+            elif args_catalog == 'eFEDS':
                 print("\n")
                 print(f"{colored(args_catalog, 'yellow')} catalog is loading")
-                eRosita_path = os.path.join(catalog_datapath, "eRosita.fits").replace("\\", "/")
+                eFEDS_path = os.path.join(catalog_datapath, "eFEDS.fits").replace("\\", "/")
                 print("-"*50)
-                valid_path = get_valid_file_path(eRosita_path)
+                valid_path = get_valid_file_path(eFEDS_path)
                 print("-"*50, "\n")
                 return valid_path, args_catalog
             elif args_catalog == "compare_catalog":
                 print("\n")
-                print("Enter catalog keyword (Xmm_DR13/CSC_2.0/Swift/eRosita)")
+                print("Enter catalog keyword (Xmm_DR13/CSC_2.0/Swift/eFEDS)")
                 catalog_1 = str(input("First catalog : "))
                 while True:
                     if catalog_1 == "Xmm_DR13":
@@ -147,8 +147,8 @@ def choose_catalog(args_catalog) -> Tuple[str, str]:
                     elif catalog_1 == "Swift":
                         catalog_1_path = os.path.join(catalog_datapath, "Swift.fits").replace("\\", "/")
                         break
-                    elif catalog_1 == "eRosita":
-                        catalog_1_path = os.path.join(catalog_datapath, "eRosita.fits").replace("\\", "/")
+                    elif catalog_1 == "eFEDS":
+                        catalog_1_path = os.path.join(catalog_datapath, "eFEDS.fits").replace("\\", "/")
                         break
                     else:
                         catalog_1 = str(input("Keyword unnaccepted, retry : "))
@@ -165,8 +165,8 @@ def choose_catalog(args_catalog) -> Tuple[str, str]:
                     elif catalog_2 == "Swift":
                         catalog_2_path = os.path.join(catalog_datapath, "Swift.fits").replace("\\", "/")
                         break
-                    elif catalog_2 == "eRosita":
-                        catalog_2_path = os.path.join(catalog_datapath, "eRosita.fits").replace("\\", "/")
+                    elif catalog_2 == "eFEDS":
+                        catalog_2_path = os.path.join(catalog_datapath, "eFEDS.fits").replace("\\", "/")
                         break
                     else:
                         catalog_2 = str(input("Keyword unnaccepted, retry : "))
@@ -177,7 +177,7 @@ def choose_catalog(args_catalog) -> Tuple[str, str]:
             elif args_catalog == "match":
                 return 'matched_catalog', 'match'
             else:
-                raise argparse.ArgumentError(None, "invalid catalog keyword keyword. retry with Xmm_DR13, CSC_2.0, Swift, eRosita, compare_catalog or match.")
+                raise argparse.ArgumentError(None, "invalid catalog keyword keyword. retry with Xmm_DR13, CSC_2.0, Swift, eFEDS, compare_catalog or match.")
         except argparse.ArgumentError as error:
             print(f'An error occured : {error}')
             args_catalog = str(input("Enter a new key word : \n"))
@@ -329,7 +329,7 @@ def py_to_xlsx(excel_data_path: str, count_rates: List, object_data: Dict, args:
         count_rates (List[float]): A list of count rates to be saved.
         object_data (Dict): Dictionary containing data about the observed astronomical object.
         args (Tuple[str, str]): Tuple of additional arguments, typically catalog identifiers 
-                                (e.g., 'Xmm_DR13', 'CSC_2.0', 'Swift', 'eRosita', 'match').
+                                (e.g., 'Xmm_DR13', 'CSC_2.0', 'Swift', 'eFEDS', 'match').
         radius (float): Radius parameter related to the data, usually specifying a region of interest around the object.
 
     This function creates an Excel workbook, writes the count rates into it, and saves the file in the specified directory.
@@ -352,7 +352,7 @@ def py_to_xlsx(excel_data_path: str, count_rates: List, object_data: Dict, args:
         cat = f"csc_{args[1]}"
     elif args[0] == "Swift":
         cat = "swi"
-    elif args[0] == "eRosita":
+    elif args[0] == "eFEDS":
         cat = "ero"
     elif args[0] == "match":
         cat = "xmmXchandra"
@@ -398,7 +398,7 @@ def xlsx_to_py(excel_data_path: str, nearby_sources_table: Table, object_data: D
         cat = f"csc_{args[1]}"
     elif args[0] == "Swift":
         cat = "swi"
-    elif args[0] == "eRosita":
+    elif args[0] == "eFEDS":
         cat = "ero"
     elif args[0] == "match":
         cat = "xmmXchandra"

@@ -47,7 +47,7 @@ import shlex
 
 class CompareCatalog:
     """
-    The CompareCatalog class is designed to analyze and compare astronomical catalogs, specifically focusing on X-ray sources. It processes two astronomical catalogs, calculating photon indices and hydrogen column densities (NH values) for sources from catalogs such as Xmm_DR13, CS_Chandra, Swift, and eRosita. This class is essential for studies involving the comparison of X-ray sources across different catalogs and determining optimal pointing positions for telescopic observations.
+    The CompareCatalog class is designed to analyze and compare astronomical catalogs, specifically focusing on X-ray sources. It processes two astronomical catalogs, calculating photon indices and hydrogen column densities (NH values) for sources from catalogs such as Xmm_DR13, CS_Chandra, Swift, and eFEDS. This class is essential for studies involving the comparison of X-ray sources across different catalogs and determining optimal pointing positions for telescopic observations.
 
     Note:
         - The class handles catalog comparison and analysis, including calculations of photon index and NH values for various X-ray catalogs.
@@ -196,16 +196,16 @@ class CompareCatalog:
                 self.nearby_sources_table_2 = self.photon_index_nh_for_other_catalog(key="Swift", table=self.nearby_sources_table_2)
                 vignet_data_2 = ["RA", "DEC", "Swift_IAUNAME"]
 
-        # ---------- eRosita photon index and nh value ---------- #
-        if "eRosita" in [key_1, key_2]:
-            print(f"\nCalculation of photon index and nh value for {colored('eRosita catalog', 'yellow')}.")
-            ero_index = [key_1, key_2].index("eRosita")
+        # ---------- eFEDS photon index and nh value ---------- #
+        if "eFEDS" in [key_1, key_2]:
+            print(f"\nCalculation of photon index and nh value for {colored('eFEDS catalog', 'yellow')}.")
+            ero_index = [key_1, key_2].index("eFEDS")
             if ero_index == 0:
-                self.nearby_sources_table_1 = self.photon_index_nh_for_other_catalog(key="eRosita", table=self.nearby_sources_table_1)
-                vignet_data_1 = ["RA", "DEC", "eRosita_IAUNAME"]
+                self.nearby_sources_table_1 = self.photon_index_nh_for_other_catalog(key="eFEDS", table=self.nearby_sources_table_1)
+                vignet_data_1 = ["RA", "DEC", "eFEDS_IAUNAME"]
             if ero_index == 1:
-                self.nearby_sources_table_2 = self.photon_index_nh_for_other_catalog(key="eRosita", table=self.nearby_sources_table_2)
-                vignet_data_2 = ["RA", "DEC", "eRosita_IAUNAME"]
+                self.nearby_sources_table_2 = self.photon_index_nh_for_other_catalog(key="eFEDS", table=self.nearby_sources_table_2)
+                vignet_data_2 = ["RA", "DEC", "eFEDS_IAUNAME"]
 
         self.neighbourhood_of_object(key=(key_1, key_2), simulation_data=simulation_data, radius=radius)
         self.model_dictionary_1, self.model_dictionary_2 = self.dictionary_model(key=(key_1, key_2))
@@ -322,7 +322,7 @@ class CompareCatalog:
         This method processes the following steps:
         - Determines the field of view based on the specified radius and the object's position.
         - Filters the sources in each catalog within the field of view and closer than the specified radius to the object's position.
-        - Applies specific procedures for handling different combinations of catalogs (e.g., CSC_2.0, Xmm_DR13, Swift, eRosita).
+        - Applies specific procedures for handling different combinations of catalogs (e.g., CSC_2.0, Xmm_DR13, Swift, eFEDS).
         - Calculates sky coordinates for the nearby sources.
         - Returns the processed tables and coordinates for further analysis.
 
@@ -369,7 +369,7 @@ class CompareCatalog:
                 return nearby_sources_table_1, nearby_sources_table_2, nearby_sources_position_1, nearby_sources_position_2
             
             else:
-                # ---------- catalog Swift or eRosita ---------- #
+                # ---------- catalog Swift or eFEDS ---------- #
                 small_table_2 = Table(names=table_2.colnames,
                                       dtype=table_2.dtype)
                 not_unique_table = Table(names=table_2.colnames,
@@ -393,11 +393,11 @@ class CompareCatalog:
                                        "right_ascension": "RA",
                                        "declination": "DEC",
                                        "catalog_name": "Swift"}
-                    elif key[1] == "eRosita":
-                        column_name = {"source_name": "eRosita_IAUNAME",
+                    elif key[1] == "eFEDS":
+                        column_name = {"source_name": "eFEDS_IAUNAME",
                                        "right_ascension": "RA",
                                        "declination": "DEC",
-                                       "catalog_name": "eRosita"}
+                                       "catalog_name": "eFEDS"}
 
                     nearby_sources_table_2 = u_f.create_unique_sources_catalog(nearby_sources_table=not_unique_table, column_name=column_name)
                     nearby_sources_position_2 = SkyCoord(ra=nearby_sources_table_2["RA"], dec=nearby_sources_table_2["DEC"], unit=u.deg)
@@ -441,7 +441,7 @@ class CompareCatalog:
                 return nearby_sources_table_1, nearby_sources_table_2, nearby_sources_position_1, nearby_sources_position_2
                 
             else:
-                # ---------- catalog Swift or eRosita ---------- #
+                # ---------- catalog Swift or eFEDS ---------- #
                 small_table_1 = Table(names=table_1.colnames,
                                       dtype=table_1.dtype)
                 not_unique_table = Table(names=table_1.colnames,
@@ -464,11 +464,11 @@ class CompareCatalog:
                                        "right_ascension": "RA",
                                        "declination": "DEC",
                                        "catalog_name": "Swift"}
-                    elif key[0] == "eRosita":
-                        column_name = {"source_name": "eRosita_IAUNAME",
+                    elif key[0] == "eFEDS":
+                        column_name = {"source_name": "eFEDS_IAUNAME",
                                        "right_ascension": "RA",
                                        "declination": "DEC",
-                                       "catalog_name": "eRosita"}
+                                       "catalog_name": "eFEDS"}
                     
                     nearby_sources_table_1 = u_f.create_unique_sources_catalog(nearby_sources_table=not_unique_table, column_name=column_name)
                     nearby_sources_position_1 = SkyCoord(ra=nearby_sources_table_1["RA"], dec=nearby_sources_table_1["DEC"], unit=u.deg)
@@ -505,7 +505,7 @@ class CompareCatalog:
                         
                 nearby_sources_position_1 = SkyCoord(ra=nearby_sources_table_1["SC_RA"], dec=nearby_sources_table_1["SC_DEC"], unit=u.deg)
                 
-                # ---------- catalog Swift or eRosita ---------- #
+                # ---------- catalog Swift or eFEDS ---------- #
                 
                 small_table_2 = Table(names=table_2.colnames,
                                       dtype=table_2.dtype)
@@ -529,11 +529,11 @@ class CompareCatalog:
                                        "right_ascension": "RA",
                                        "declination": "DEC",
                                        "catalog_name": "Swift"}
-                    elif key[1] == "eRosita":
-                        column_name = {"source_name": "eRosita_IAUNAME",
+                    elif key[1] == "eFEDS":
+                        column_name = {"source_name": "eFEDS_IAUNAME",
                                        "right_ascension": "RA",
                                        "declination": "DEC",
-                                       "catalog_name": "eRosita"}
+                                       "catalog_name": "eFEDS"}
                                     
                     nearby_sources_table_2 = u_f.create_unique_sources_catalog(nearby_sources_table=not_unique_table, column_name=column_name)
                     nearby_sources_position_2 = SkyCoord(ra=nearby_sources_table_2["RA"], dec=nearby_sources_table_2["DEC"], unit=u.deg)
@@ -545,7 +545,7 @@ class CompareCatalog:
                     sys.exit()
                 
             elif key[1] == "Xmm_DR13":
-                # ---------- catalog Swift or eRosita ---------- #
+                # ---------- catalog Swift or eFEDS ---------- #
                 small_table_1 = Table(names=table_1.colnames,
                                       dtype=table_1.dtype)
                 not_unique_table = Table(names=table_1.colnames,
@@ -569,11 +569,11 @@ class CompareCatalog:
                                        "right_ascension": "RA",
                                        "declination": "DEC",
                                        "catalog_name": "Swift"}
-                    elif key[0] == "eRosita":
-                        column_name = {"source_name": "eRosita_IAUNAME",
+                    elif key[0] == "eFEDS":
+                        column_name = {"source_name": "eFEDS_IAUNAME",
                                        "right_ascension": "RA",
                                        "declination": "DEC",
-                                       "catalog_name": "eRosita"}
+                                       "catalog_name": "eFEDS"}
                     
                     nearby_sources_table_1 = u_f.create_unique_sources_catalog(nearby_sources_table=not_unique_table, column_name=column_name)
                     nearby_sources_position_1 = SkyCoord(ra=nearby_sources_table_1["RA"], dec=nearby_sources_table_1["DEC"], unit=u.deg)
@@ -605,7 +605,7 @@ class CompareCatalog:
                     sys.exit()
                 
             else:
-                # ---------- eRosita or Swift catalog ---------- #
+                # ---------- eFEDS or Swift catalog ---------- #
                 small_table_1 = Table(names=table_1.colnames,
                                       dtype=table_1.dtype)
                 not_unique_table_1 = Table(names=table_1.colnames,
@@ -629,16 +629,16 @@ class CompareCatalog:
                                        "right_ascension": "RA",
                                        "declination": "DEC",
                                        "catalog_name": "Swift"}
-                    elif key[0] == "eRosita":
-                        column_name = {"source_name": "eRosita_IAUNAME",
+                    elif key[0] == "eFEDS":
+                        column_name = {"source_name": "eFEDS_IAUNAME",
                                        "right_ascension": "RA",
                                        "declination": "DEC",
-                                       "catalog_name": "eRosita"}
+                                       "catalog_name": "eFEDS"}
                         
                     nearby_sources_table_1 = u_f.create_unique_sources_catalog(nearby_sources_table=not_unique_table_1, column_name=column_name)
                     nearby_sources_position_1 = SkyCoord(ra=nearby_sources_table_1["RA"], dec=nearby_sources_table_1["DEC"], unit=u.deg)
 
-                    # ---------- eRosita or Swift catalog ---------- #
+                    # ---------- eFEDS or Swift catalog ---------- #
                     small_table_2 = Table(names=table_2.colnames,
                                         dtype=table_2.dtype)
                     not_unique_table_2 = Table(names=table_2.colnames,
@@ -662,11 +662,11 @@ class CompareCatalog:
                                            "right_ascension": "RA",
                                            "declination": "DEC",
                                            "catalog_name": "Swift"}
-                        elif key[1] == "eRosita":
-                            column_name = {"source_name": "eRosita_IAUNAME",
+                        elif key[1] == "eFEDS":
+                            column_name = {"source_name": "eFEDS_IAUNAME",
                                            "right_ascension": "RA",
                                            "declination": "DEC",
-                                           "catalog_name": "eRosita"}
+                                           "catalog_name": "eFEDS"}
                             
                         nearby_sources_table_2 = u_f.create_unique_sources_catalog(nearby_sources_table=not_unique_table_2, column_name=column_name)
                         nearby_sources_position_2 = SkyCoord(ra=nearby_sources_table_2["RA"], dec=nearby_sources_table_2["DEC"], unit=u.deg)
@@ -687,7 +687,7 @@ class CompareCatalog:
 
         Args:
             index (int): The index of the source in the catalog for optimization.
-            key (str): The key identifying the catalog (e.g., 'XMM', 'CS_Chandra', 'Swift', 'eRosita').
+            key (str): The key identifying the catalog (e.g., 'XMM', 'CS_Chandra', 'Swift', 'eFEDS').
             table (Table): The table with observed flux data and other relevant information.
 
         Returns:
@@ -720,7 +720,7 @@ class CompareCatalog:
                            "energy_band_center": dict_cat.dictionary_catalog[key]["energy_band_center"],
                            "energy_band_half_width": dict_cat.dictionary_catalog[key]["energy_band_half_width"]}
         
-        if key == "eRosita":
+        if key == "eFEDS":
             interp_data = {"band_flux_obs": dict_cat.dictionary_catalog[key]["band_flux_obs"],
                            "band_flux_obs_err": dict_cat.dictionary_catalog[key]["band_flux_obs_err"],
                            "energy_band_center": dict_cat.dictionary_catalog[key]["energy_band_center"],
@@ -756,7 +756,7 @@ class CompareCatalog:
         Args:
             optimization_parameters (List): Optimization parameters from the absorbed power-law model fitting.
             photon_index (List): List of photon indices for each source or observation.
-            key (str): The catalog key (e.g., 'XMM', 'CS_Chandra', 'Swift', 'eRosita').
+            key (str): The catalog key (e.g., 'XMM', 'CS_Chandra', 'Swift', 'eFEDS').
 
         Note:
             This visualization method is designed for astrophysical data and requires an understanding of spectral analysis in astronomy.
@@ -904,7 +904,7 @@ class CompareCatalog:
         The method performs the following steps:
         - Iterates over each item in the catalog to check for undefined or missing flux values, represented as `np.ma.core.MaskedConstant`.
         - Replaces missing values in observed flux (`flux_obs`) and flux error (`flux_obs_err`) fields with the minimum numerical value found in the respective field.
-        - Processes other flux-related fields (like `flux_powlaw_aper_b`, `flux_powlaw_aper__s/m/h`, and their error limits) in a similar manner.
+        - Processes other flux-related fields (like `flux_aper_b`, `flux_aper__s/m/h`, and their error limits) in a similar manner.
         - Ensures that all flux-related fields in the catalog have consistent and usable numerical values, facilitating further analysis.
 
         This method is crucial for preparing astronomical data for analysis, ensuring that all flux-related fields are consistent and numerically valid, especially important in catalogs where missing or undefined values are common.
@@ -913,7 +913,7 @@ class CompareCatalog:
         source_number = len(cone_search_catalog)
         key = "CS_Chandra"
 
-        # name : flux_powlaw_aper_b
+        # name : flux_aper_b
         # algo to replace -- by the min numerical value of the list
         flux_obs = dict_cat.dictionary_catalog[key]["flux_obs"]
         flux_data = []
@@ -937,7 +937,7 @@ class CompareCatalog:
             corrected_flux_err_obs = np.nan_to_num(flux_err_obs, nan=np.min(flux_err))
             cone_search_catalog[name] = corrected_flux_err_obs
 
-        # name : flux_powlaw_aper__s/m/h
+        # name : flux_aper__s/m/h
         # algo to replace -- by the min numerical value of the list
         for name in dict_cat.dictionary_catalog[key]["band_flux_obs"]:
             # itera name in band_flux_obs 
@@ -952,7 +952,7 @@ class CompareCatalog:
             cone_search_catalog[name] = corrected_flux
 
 
-        # name : flux_powlaw_aper_lo/hi_lim_s/m/h
+        # name : flux_aper_lo/hi_lim_s/m/h
         err_flux_neg, err_flux_pos = dict_cat.dictionary_catalog[key]["band_flux_obs_err"][0], dict_cat.dictionary_catalog[key]["band_flux_obs_err"][1]
         # algo to replace -- by the min numerical value of the list
         for err_name_0, err_name_1 in zip(err_flux_neg, err_flux_pos):
@@ -1041,7 +1041,7 @@ class CompareCatalog:
         Computes and updates photon index and hydrogen column density (NH) for sources in a given astronomical catalog other than XMM and CSC.
 
         Args:
-            key (str): The key identifying the catalog (e.g., 'Swift', 'eRosita').
+            key (str): The key identifying the catalog (e.g., 'Swift', 'eFEDS').
             table (Table): The table containing the catalog data.
 
         Returns:
@@ -1131,16 +1131,16 @@ class CompareCatalog:
         elif key[0] == "CSC_2.0" and key[1] == "Xmm_DR13":
             ra_1, ra_2 = "ra", "SC_RA"
             dec_1, dec_2 = "dec", "SC_DEC"
-        elif key[0] == "Xmm_DR13" and (key[1] == "Swift" or key[1] == "eRosita"):
+        elif key[0] == "Xmm_DR13" and (key[1] == "Swift" or key[1] == "eFEDS"):
             ra_1, ra_2 = "SC_RA", "RA"
             dec_1, dec_2 = "SC_DEC", "DEC"
-        elif key[0] == "CSC_2.0" and (key[1] == "Swift" or key[1] == "eRosita"):
+        elif key[0] == "CSC_2.0" and (key[1] == "Swift" or key[1] == "eFEDS"):
             ra_1, ra_2 = "ra", "RA"
             dec_1, dec_2 = "dec", "DEC"
-        elif (key[0] == "Swift" or key[0] == "eRosita") and key[1] == "Xmm_DR13":
+        elif (key[0] == "Swift" or key[0] == "eFEDS") and key[1] == "Xmm_DR13":
             ra_1, ra_2 = "RA", "SC_RA"
             dec_1, dec_2 = "DEC", "SC_DEC"
-        elif (key[0] == "Swift" or key[0] == "eRosita") and key[1] == "CSC_2.0":
+        elif (key[0] == "Swift" or key[0] == "eFEDS") and key[1] == "CSC_2.0":
             ra_1, ra_2 = "RA", "ra"
             dec_1, dec_2 = "DEC", "dec"
         else:
@@ -1315,7 +1315,7 @@ class CompareCatalog:
         Reads count rate data from an Excel file based on specified parameters and updates the provided table with these values.
 
         Args:
-            args (str): Identifier for the catalog to be used (e.g., "Xmm_DR13", "CSC_2.0", "Swift", "eRosita", "match").
+            args (str): Identifier for the catalog to be used (e.g., "Xmm_DR13", "CSC_2.0", "Swift", "eFEDS", "match").
             table (Table): The table to be updated with count rate data.
             simulation_data (Dict): Dictionary containing simulation parameters and paths.
             radius (float): The radius value used to define the file name for the Excel data.
@@ -1336,7 +1336,7 @@ class CompareCatalog:
             cat = "csc_CS_Chandra"
         elif args == "Swift":
             cat = "swi"
-        elif args == "eRosita":
+        elif args == "eFEDS":
             cat = "ero"
         elif args == "match":
             cat = "xmmXchandra"

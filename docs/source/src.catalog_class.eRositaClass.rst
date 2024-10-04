@@ -1,7 +1,7 @@
-src.catalog\_class.eRositaClass module
+src.catalog\_class.eFEDSClass module
 ======================================
 
-.. automodule:: src.catalog_class.eRositaClass
+.. automodule:: src.catalog_class.eFEDSClass
    :members:
    :undoc-members:
    :show-inheritance:

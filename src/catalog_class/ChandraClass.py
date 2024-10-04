@@ -456,7 +456,7 @@ class ChandraCatalog:
         source_number = len(cone_search_catalog)
         key = "CS_Chandra"
 
-        # name : flux_powlaw_aper_b
+        # name : flux_aper_b
         # algo to replace -- by the min numerical value of the list
         flux_obs = dict_cat.dictionary_catalog[key]["flux_obs"]
         flux_data = []
@@ -480,7 +480,7 @@ class ChandraCatalog:
             corrected_flux_err_obs = np.nan_to_num(flux_err_obs, nan=np.min(flux_err))
             cone_search_catalog[name] = corrected_flux_err_obs
 
-        # name : flux_powlaw_aper__s/m/h
+        # name : flux_aper__s/m/h
         # algo to replace -- by the min numerical value of the list
         for name in dict_cat.dictionary_catalog[key]["band_flux_obs"]:
             # itera name in band_flux_obs 
@@ -495,7 +495,7 @@ class ChandraCatalog:
             cone_search_catalog[name] = corrected_flux
 
 
-        # name : flux_powlaw_aper_lo/hi_lim_s/m/h
+        # name : flux_aper_lo/hi_lim_s/m/h
         err_flux_neg, err_flux_pos = dict_cat.dictionary_catalog[key]["band_flux_obs_err"][0], dict_cat.dictionary_catalog[key]["band_flux_obs_err"][1]
         # algo to replace -- by the min numerical value of the list
         for err_name_0, err_name_1 in zip(err_flux_neg, err_flux_pos):

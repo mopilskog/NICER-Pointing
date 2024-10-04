@@ -6,7 +6,7 @@ import numpy as np
 
 # ------------------------------ #
 
-catalogs = ["XMM", "Chandra", "Swift", "eRosita", "Slew", "Stacked", "RASS", "WGACAT"]
+catalogs = ["XMM", "Chandra", "Swift", "eFEDS", "Slew", "Stacked", "RASS", "WGACAT"]
 style = "bmh"
 cmap_to_use = "turbo"
 
@@ -34,28 +34,28 @@ dictionary_catalog = {
         "band_conv_factor_soft": 0.35/0.35,
         "band_conv_factor_hard": 0.65/0.65,
         "hr_track_marker": "o"},
-"Chandra":{"flux_obs": "flux_powlaw_aper_b",
-        "flux_obs_err": ["flux_powlaw_aper_b_negerr", "flux_powlaw_aper_b_poserr"],
+"Chandra":{"flux_obs": "flux_aper_b",
+        "flux_obs_err": ["flux_aper_b_negerr", "flux_aper_b_poserr"],
         "conv_factor": 1/0.999,
         "time_name": "gti_mjd_obs",
         "obsid_name": np.nan,
-        "band_flux_obs": [f"flux_powlaw_aper_{band}" for band in ["s", 'm', "h"]],
-        "band_flux_obs_err": [[f"flux_powlaw_aper_{band}_negerr" for band in ["s", "m", "h"]],
-                                [f"flux_powlaw_aper_{band}_poserr" for band in ["s", "m", "h"]]],
+        "band_flux_obs": [f"flux_aper_{band}" for band in ["s", 'm', "h"]],
+        "band_flux_obs_err": [[f"flux_aper_{band}_negerr" for band in ["s", "m", "h"]],
+                                [f"flux_aper_{band}_poserr" for band in ["s", "m", "h"]]],
         "energy_band_center": [0.85, 1.6, 4.5],
         "energy_band_half_width": [0.35, 0.4, 2.5],
         "hr_bandlimit_index": 2,
         "band_conv_factor_soft": 0.35/0.28,
         "band_conv_factor_hard": 0.65/0.41,
         "hr_track_marker": "v"},
-"CS_Chandra": {"flux_obs": "flux_powlaw_aper_b",
-                "flux_obs_err": ["flux_powlaw_aper_lolim_b", "flux_powlaw_aper_hilim_b"],
+"CS_Chandra": {"flux_obs": "flux_aper_b",
+                "flux_obs_err": ["flux_aper_lolim_b", "flux_aper_hilim_b"],
                 "conv_factor": 1/0.999,
                 "time_name": np.nan,
                 "obsid_name": np.nan,
-                "band_flux_obs": [f"flux_powlaw_aper_{band}" for band in ["s", 'm', "h"]],
-                "band_flux_obs_err": [[f"flux_powlaw_aper_lolim_{band}" for band in ['s', 'm', 'h']],
-                                        [f"flux_powlaw_aper_hilim_{band}" for band in ['s', 'm', 'h']]],
+                "band_flux_obs": [f"flux_aper_{band}" for band in ["s", 'm', "h"]],
+                "band_flux_obs_err": [[f"flux_aper_lolim_{band}" for band in ['s', 'm', 'h']],
+                                        [f"flux_aper_hilim_{band}" for band in ['s', 'm', 'h']]],
                 "energy_band_center": [0.85, 1.6, 4.5],
                 "energy_band_half_width": [0.35, 0.4, 2.5],
                 "hr_bandlimit_index": 2,
@@ -76,12 +76,12 @@ dictionary_catalog = {
         "band_conv_factor_soft": 0.35/0.34,
         "band_conv_factor_hard": 0.65/0.56,
         "hr_track_marker": "s"},
-"eRosita": {"flux_obs": "ML_FLUX",
+"eFEDS": {"flux_obs": "ML_FLUX",
                 "flux_obs_err": ["ML_FLUX_ERR", "ML_FLUX_ERR"],
                 "conv_factor": 1/0.39,
                 "time_name": "MJD_OBS",
                 "obsid_name": np.nan,
-                "band_flux_obs": [f"ML_FLUX_ERR_b{item +1}" for item in range(4)],
+                "band_flux_obs": [f"ML_FLUX_b{item +1}" for item in range(4)],
                 "band_flux_obs_err": [[f"ML_FLUX_ERR_b{item + 1}" for item in range(4)],
                                 [f"ML_FLUX_ERR_b{item + 1}" for item in range(4)]],
                 "energy_band_center": [0.35, 0.75, 1.5, 3.25],
@@ -146,6 +146,20 @@ dictionary_catalog = {
         "band_conv_factor_soft": 0.35/0.35,
         "band_conv_factor_hard": np.nan,
         "hr_track_marker": "d"},
+"eRASS1": {"flux_obs": "ML_FLUX_1",
+                "flux_obs_err": ["ML_FLUX_ERR_1", "ML_FLUX_ERR_1"],
+                "conv_factor": 1/0.39,
+                "time_name": "MJD_MIN",
+                "obsid_name": np.nan,
+                "band_flux_obs": [f"ML_FLUX_P{item +1}" for item in range(4)],
+                "band_flux_obs_err": [[f"ML_FLUX_ERR_P{item + 1}" for item in range(4)],
+                                [f"ML_FLUX_ERR_P{item + 1}" for item in range(4)]],
+                "energy_band_center": [0.35, 0.75, 1.5, 3.5],
+                "energy_band_half_width": [0.15, 0.25, 0.5, 1.5],
+                "hr_bandlimit_index": 3,
+                "band_conv_factor_soft": 0.35/0.35,
+                "band_conv_factor_hard": 0.65/0.24,
+                "hr_track_marker": "^"}
 }
 
 dictionary_coord = {
@@ -157,7 +171,7 @@ dictionary_coord = {
                 "declination": "dec"},
 "Swift": {"right_ascension": "RA",
         "declination": "DEC"},
-"eRosita": {"right_ascension": "RA",
+"eFEDS": {"right_ascension": "RA",
                 "declination": "DEC"}
 }
 

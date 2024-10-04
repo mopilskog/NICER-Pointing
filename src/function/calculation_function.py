@@ -356,7 +356,7 @@ def vignetting_factor(OptimalPointingIdx, vector_dictionary, simulation_data, da
     print(f"The distance between {colored(nearby_sources_table[name][min_distance_index], 'yellow')} and optimal pointing point is {colored(min_distance, 'blue')} arcmin.\n"
           f"With a vignetting factor of : {colored(max_vignet, 'light_green')} ")
     print(f"The distance between {colored(object_data['object_name'], 'yellow')} and optimal pointing point is {colored(distance_psr_to_optipoint, 'blue')} arcmin,\n"
-          f"with a vagnetting factor of : {colored(vignetting_factor_psr2optipoint, 'light_green')}")
+          f"with a vignetting factor of : {colored(vignetting_factor_psr2optipoint, 'light_green')}")
     
     nearby_sources_table["vignetting_factor"] = vignetting_factor
     
