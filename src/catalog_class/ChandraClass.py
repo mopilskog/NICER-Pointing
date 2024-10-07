@@ -620,10 +620,13 @@ class ChandraCatalog:
         try:
             popt, pcov = curve_fit(absorbed_power_law, interp_data["energy_band_center"], y_array, sigma=yerr_array)
             constant, photon_index = popt
+            optimization_parameters = (interp_data["energy_band_center"], y_array, yerr_array, absorbed_power_law(interp_data["energy_band_center"], *popt))
         except Exception as error:
-            photon_index = 1.7
-            
-        optimization_parameters = (interp_data["energy_band_center"], y_array, yerr_array, absorbed_power_law(interp_data["energy_band_center"], *popt))
+            # Default values if curve fitting fails
+            constant = 1.0  # Reasonable default for constant
+            photon_index = 1.7  # Default for photon index
+            popt = [constant, photon_index]  # Use these defaults for popt
+            optimization_parameters = (interp_data["energy_band_center"], y_array, yerr_array, [None] * len(interp_data["energy_band_center"]))
             
         return photon_index, optimization_parameters 
         
