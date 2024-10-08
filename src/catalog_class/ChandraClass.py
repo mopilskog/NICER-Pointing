@@ -694,7 +694,8 @@ class ChandraCatalog:
                     self.nh_list.append(3e20)
         
         self.visualization_interp(optimization_parameters=parameters_list, photon_index=photon_index_list, key=key)
-        
+        a =len(photon_index_list)
+        b = len(self.nearby_sources_table)
         self.nearby_sources_table["Photon Index"] = photon_index_list
         self.nearby_sources_table["Nh"] = self.nh_list
         

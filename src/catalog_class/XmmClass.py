@@ -271,7 +271,7 @@ class XmmCatalog:
         for number in tqdm(range(len(self.xmm_catalog))):
             if min_ra/u.deg < self.xmm_catalog[self.ra][number] < max_ra/u.deg and min_dec/u.deg < self.xmm_catalog[self.dec][number] < max_dec/u.deg:
                 small_table.add_row(self.xmm_catalog[number])
-            
+
         src_position = SkyCoord(ra=small_table[self.ra], dec=small_table[self.dec], unit=u.deg)
         print(f"{colored(f'Find sources close to {object_name} with XMM catalog', 'blue')}")
         for number in tqdm(range(len(small_table))):

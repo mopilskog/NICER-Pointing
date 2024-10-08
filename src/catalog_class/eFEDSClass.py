@@ -206,9 +206,10 @@ class eFEDSCatalog:
 
         print(fr"{colored('Reducing Swift catalog...', 'yellow')} to fov of {radius.value + 5 } arcmin")
         for number in tqdm(range(len(self.eRo_catalog))):
+            #print(self.eRo_catalog[self.ra][number], self.eRo_catalog[self.dec][number])
             if min_ra/u.deg < self.eRo_catalog[self.ra][number] < max_ra/u.deg and min_dec/u.deg < self.eRo_catalog[self.dec][number] < max_dec/u.deg:
                 small_table.add_row(self.eRo_catalog[number])
-                
+
         src_position = SkyCoord(ra=small_table[self.ra], dec=small_table[self.dec], unit=u.deg)
                 
         print(f"{colored(f'Find sources close to {object_name} with eFEDS catalog', 'blue')}")
