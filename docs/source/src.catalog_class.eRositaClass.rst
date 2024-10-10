@@ -1,7 +1,7 @@
-src.catalog\_class.eFEDSClass module
+src.catalog\_class.eRASS1Class module
 ======================================
 
-.. automodule:: src.catalog_class.eFEDSClass
+.. automodule:: src.catalog_class.eRASS1Class
    :members:
    :undoc-members:
    :show-inheritance:

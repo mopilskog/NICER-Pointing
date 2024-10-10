@@ -18,7 +18,7 @@ from jaxspec.data.util import data_path_finder
 from catalog_class.XmmClass import XmmCatalog
 from catalog_class.ChandraClass import ChandraCatalog
 from catalog_class.SwiftClass import SwiftCatalog
-from catalog_class.eFEDSClass import eFEDSCatalog
+from catalog_class.eRASS1Class import eRASS1Catalog
 from catalog_class.CompareCatalogClass import CompareCatalog
 from catalog_class.MatchClass import MatchCatalog
 
@@ -50,7 +50,7 @@ import platform
 # from src.catalog_class.XmmClass import XmmCatalog
 # from src.catalog_class.ChandraClass import ChandraCatalog
 # from src.catalog_class.SwiftClass import SwiftCatalog
-# from src.catalog_class.eFEDSClass import eFEDSCatalog
+# from src.catalog_class.eRASS1Class import eRASS1Catalog
 # from src.catalog_class.CompareCatalogClass import CompareCatalog
 # from src.catalog_class.MatchClass import MatchCatalog
 # import src.function.init_function as i_f
@@ -90,7 +90,7 @@ def main():
         - --radius, -r : Define the radius of the area to be analyzed.
         - --exp_time, -e_t : Set the exposure time for modeling.
         - --catalog, -ca : Choose the catalog to use for analysis:
-            - Key : Xmm_DR13 / CSC_2.0 / Swift / eFEDS / match / compare_catalog
+            - Key : Xmm_DR13 / CSC_2.0 / Swift / eRASS1 / match / compare_catalog
         
     Example:
         Here is an example demonstrating the use of the argument:
@@ -107,7 +107,7 @@ def main():
     Initialization:
     ===============
         This script serves as the primary interface for the Optimal Pointing Point Code designed for the NICER telescope. It initializes a set of predefined 
-        astronomical catalogs and sets up a command-line argument parser to process user inputs. The available catalogs include 'XMM', 'Chandra', 'Swift', 'eFEDS'. 
+        astronomical catalogs and sets up a command-line argument parser to process user inputs. The available catalogs include 'XMM', 'Chandra', 'Swift', 'eRASS1'. 
 
         Users can interact with the script by specifying options such as displaying a pulsar table, providing the name or coordinates of a celestial object, defining the 
         field of view radius, setting the exposure time for data modeling, or selecting a specific catalog for analysis. The script then performs data collection and 
@@ -268,28 +268,28 @@ def main():
     After processing the Swift catalog data, the script updates `simulation_data` and prepares for subsequent stages of analysis, leveraging the unique capabilities of the Swift mission for NICER's optimization.
 
 
-    eFEDS Catalog Handling [eFEDS]
+    eRASS1 Catalog Handling [eRASS1]
     ----------------------------------
-    This section of the script focuses on the utilization of the eFEDS catalog for the NICER telescope pointing optimization. The eFEDS space telescope provides comprehensive all-sky survey data in X-ray bands, making it invaluable for astronomical research and analysis.
+    This section of the script focuses on the utilization of the eRASS1 catalog for the NICER telescope pointing optimization. The eRASS1 space telescope provides comprehensive all-sky survey data in X-ray bands, making it invaluable for astronomical research and analysis.
 
     Functionality:
-        - The script sets up a dedicated directory for the eFEDS catalog, ensuring organized storage and retrieval of data.
-        - The `eFEDSCatalog` class is initialized to process and analyze the data from this catalog.
+        - The script sets up a dedicated directory for the eRASS1 catalog, ensuring organized storage and retrieval of data.
+        - The `eRASS1Catalog` class is initialized to process and analyze the data from this catalog.
         - Directories for storing images and the closest catalog data are created to facilitate effective data handling and visualization.
 
-    eFEDS Catalog Processing:
-        - Configuration settings specific to the eFEDS catalog are stored in `os_dictionary`, including paths for modeling files, images, and software tools.
-        - The `eFEDSCatalog` class manages the data from the eFEDS space telescope, focusing on optimal point determination for NICER.
+    eRASS1 Catalog Processing:
+        - Configuration settings specific to the eRASS1 catalog are stored in `os_dictionary`, including paths for modeling files, images, and software tools.
+        - The `eRASS1Catalog` class manages the data from the eRASS1 space telescope, focusing on optimal point determination for NICER.
 
     Note:
-        - The eFEDS catalog's comprehensive sky coverage offers a wide range of data for analysis, enhancing the scope of the NICER pointing optimization.
-        - The data from eFEDS is crucial for understanding large-scale structures and energetic phenomena in the universe.
+        - The eRASS1 catalog's comprehensive sky coverage offers a wide range of data for analysis, enhancing the scope of the NICER pointing optimization.
+        - The data from eRASS1 is crucial for understanding large-scale structures and energetic phenomena in the universe.
 
     Important:
-        - Users should ensure that the eFEDS catalog data is current and correctly formatted for effective processing.
-        - Adjustments in the `eFEDSCatalog` class or the analysis parameters should be made with caution to maintain the integrity of the results.
+        - Users should ensure that the eRASS1 catalog data is current and correctly formatted for effective processing.
+        - Adjustments in the `eRASS1Catalog` class or the analysis parameters should be made with caution to maintain the integrity of the results.
 
-    Upon completion of processing, the script updates the `simulation_data` with key information from the eFEDS catalog and prepares the data for subsequent analysis stages.
+    Upon completion of processing, the script updates the `simulation_data` with key information from the eRASS1 catalog and prepares the data for subsequent analysis stages.
 
 
     Combined XMM and Chandra Catalog Handling [match]
@@ -348,7 +348,7 @@ def main():
     
     The choice of keys "match" and "compare_catalog" allows the algorithm to perform the necessary calculations within the classes or the dedicated section for these keys.
 
-    If the user selects one of the following keys: {"Xmm_DR13", "CSC_2.0", "Swift", "eFEDS"}, then the classes respectively generate the nearby sources table (nearby_sources_table), 
+    If the user selects one of the following keys: {"Xmm_DR13", "CSC_2.0", "Swift", "eRASS1"}, then the classes respectively generate the nearby sources table (nearby_sources_table), 
     a list of the positions of these sources (nearby_sources_position), photon index data, hydrogen density column, and a dictionary (model_dictionary) containing the model for determining count rates, 
     the value of this model, the median flux, and Nh.
     
@@ -458,7 +458,7 @@ def main():
     """
     # --------------- Initialization --------------- #
  
-    catalogs = ["XMM", "Chandra", "Swift", "eFEDS", "Slew", "RASS", "WGACAT", "Stacked"]
+    catalogs = ["XMM", "Chandra", "Swift", "eRASS1", "Slew", "RASS", "WGACAT", "Stacked"]
 
     parser = argparse.ArgumentParser(description="Code optimal pointing point for NICER",
                                     epilog="Focus an object with his name or his coordinate")
@@ -478,7 +478,7 @@ def main():
                         help="Enter the exposure time to modeling data")
 
     parser.add_argument('--catalog', '-ca', type=str, 
-                        help="Enter catalog keyword : Xmm_DR13/CSC_2.0/Swift/eFEDS/compare_catalog/match")
+                        help="Enter catalog keyword : Xmm_DR13/CSC_2.0/Swift/eRASS1/compare_catalog/match")
 
     args = parser.parse_args()
 
@@ -764,11 +764,11 @@ def main():
         
         simulation_data["os_dictionary"]["catalog_key"] = key
         
-    elif catalog_name == "eFEDS":
-        # Find the optimal pointing with the eFEDS catalog
+    elif catalog_name == "eRASS1":
+        # Find the optimal pointing with the eRASS1 catalog
         
-        # creation of eFEDS directory
-        eRo_directory = os.path.join(modeling_file_path, 'eFEDS'.replace("\\", "/"))
+        # creation of eRASS1 directory
+        eRo_directory = os.path.join(modeling_file_path, 'eRASS1'.replace("\\", "/"))
         eRo_img = os.path.join(eRo_directory, 'img'.replace("\\", "/"))
         eRo_closest_catalog = os.path.join(eRo_directory, "closest_catalog")
         if not os.path.exists(eRo_directory):
@@ -786,20 +786,20 @@ def main():
                         "topcat_software_path": topcat_software_path}
         
         simulation_data["os_dictionary"] = os_dictionary
-        # call eFEDS Class to make modeling
-        eRo = eFEDSCatalog(catalog_path=catalog_path, radius=radius, simulation_data=simulation_data, user_table=add_source_table)
+        # call eRASS1 Class to make modeling
+        eRo = eRASS1Catalog(catalog_path=catalog_path, radius=radius, simulation_data=simulation_data, user_table=add_source_table)
         nearby_sources_table, nearby_sources_position = eRo.nearby_sources_table, eRo.nearby_sources_position
         model_dictionary = eRo.model_dictionary
         
-        key = "eFEDS"
+        key = "eRASS1"
         column_dictionary = {"band_flux_obs": dict_cat.dictionary_catalog[key]["band_flux_obs"],
                             "band_flux_obs_err": dict_cat.dictionary_catalog[key]["band_flux_obs_err"],
                             "energy_band": dict_cat.dictionary_catalog[key]["energy_band_center"],
                             "sigma": np.array(list(np.linspace(1e-20, 1e-24, len(dict_cat.dictionary_catalog[key]["energy_band_center"])))),
-                            "data_to_vignetting": ["RA", "DEC", "eFEDS_IAUNAME"]}
+                            "data_to_vignetting": ["RA", "DEC", "eRASS_IAUNAME"]}
         
         simulation_data["os_dictionary"]["catalog_key"] = key
-        
+ 
     elif catalog_name == "match":
         # Find optimal pointing point with using two catalog Xmm and Chandra
         

@@ -251,7 +251,7 @@ def create_unique_sources_catalog(nearby_sources_table: Table, column_name: List
         unique_table["RA"] = ra_col
         unique_table["DEC"] = dec_col
         
-    if key == "eFEDS":
+    if key == "eRASS1":
     
         iauname_col, ra_col, dec_col = [], [], []
         for key, value in list(sources_dict.items()):
@@ -260,7 +260,7 @@ def create_unique_sources_catalog(nearby_sources_table: Table, column_name: List
             dec_col.append(np.mean([nearby_sources_table[column_name["declination"]][index] for index in value]))
         
         unique_table = Table()
-        unique_table["eFEDS_IAUNAME"] = iauname_col
+        unique_table["eRASS_IAUNAME"] = iauname_col
         unique_table["RA"] = ra_col
         unique_table["DEC"] = dec_col
         

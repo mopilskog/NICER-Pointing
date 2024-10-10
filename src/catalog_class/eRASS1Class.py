@@ -33,17 +33,17 @@ import catalog_information as dict_cat
 
 # --------------------------------------- #
 
-class eFEDSCatalog:
+class eRASS1Catalog:
     """
-    A class dedicated to handling and analyzing astronomical data from the eFEDS catalog.
+    A class dedicated to handling and analyzing astronomical data from the eRASS1 catalog.
 
-    The eFEDSCatalog class offers a suite of methods for efficiently managing and interpreting data from the eFEDS space telescope. 
+    The eRASS1Catalog class offers a suite of methods for efficiently managing and interpreting data from the eRASS1 space telescope. 
     This includes capabilities for opening the catalog, identifying nearby astronomical sources, visualizing spatial distributions 
     of these sources, and conducting detailed spectral analysis through photon index calculations. Additionally, the class provides 
     functionality for constructing detailed model dictionaries for each identified source.
 
     Important:
-        - This class is specifically tailored for the eFEDS data, providing astronomers and researchers with tools 
+        - This class is specifically tailored for the eRASS1 data, providing astronomers and researchers with tools 
           necessary for X-ray astronomy data analysis.
         - Advanced functionalities such as variability assessment and photon index calculation are integral to the 
           class, facilitating a deeper understanding of the high-energy universe.
@@ -51,28 +51,28 @@ class eFEDSCatalog:
           critical role in astrophysical research.
 
     Note:
-        - The eFEDSCatalog class is part of a broader toolkit aimed at enhancing the analysis and interpretation of 
+        - The eRASS1Catalog class is part of a broader toolkit aimed at enhancing the analysis and interpretation of 
           X-ray data from various space telescopes.
         - Integration with other data sources and catalogs is feasible, allowing for comprehensive and comparative 
           astronomical studies.
         - Users should possess a basic understanding of X-ray astronomy and data formats common in the field for optimal use.
 
     Example:
-        Instantiate the eFEDSCatalog with necessary parameters:
+        Instantiate the eRASS1Catalog with necessary parameters:
         
-        >>> eRo_catalog = eFEDSCatalog("path/to/eFEDS_catalog.fits", 5*u.arcmin, simulation_data, user_table)
+        >>> eRo_catalog = eRASS1Catalog("path/to/eRASS1_catalog.fits", 5*u.arcmin, simulation_data, user_table)
     """
 
     def __init__(self, catalog_path: str, radius: Quantity, simulation_data: dict, user_table: Table) -> None:
         """
-        Initializes the eFEDS class with the specified catalog, search radius, simulation data, and user table.
+        Initializes the eRASS1 class with the specified catalog, search radius, simulation data, and user table.
 
-        This constructor loads the eFEDS astronomical catalog from the given path, searches for nearby sources within a 
+        This constructor loads the eRASS1 astronomical catalog from the given path, searches for nearby sources within a 
         specified radius around a provided celestial object, and performs various analyses such as neighborhood 
         visualization, photon index calculation, and model dictionary creation.
 
         Args:
-            catalog_path (str): The file path to the eFEDS catalog.
+            catalog_path (str): The file path to the eRASS1 catalog.
             radius (Quantity): The radius within which to search for nearby sources, specified as an astropy Quantity.
             simulation_data (dict): A dictionary containing simulation data, including details about the celestial object.
             user_table (Table): An astropy Table provided by the user, not used in the current implementation.
@@ -83,18 +83,18 @@ class eFEDSCatalog:
             :type: str
             :value: RA
             
-            Right ascension column name as specified in dict_cat.dictionary_coord for eFEDS.
+            Right ascension column name as specified in dict_cat.dictionary_coord for eRASS1.
         
         .. attribute:: dec
             :type: str
             :value: DEC
             
-            Declination column name as specified in dict_cat.dictionary_coord for eFEDS.
+            Declination column name as specified in dict_cat.dictionary_coord for eRASS1.
             
         .. attribute:: eRo_catalog
             :type: Table
             
-            The eFEDS catalog data as an astropy Table, loaded from the specified catalog_path.
+            The eRASS1 catalog data as an astropy Table, loaded from the specified catalog_path.
             
         .. attribute:: nearby_sources_table
             :type: Table
@@ -117,18 +117,18 @@ class eFEDSCatalog:
             Dictionary of model parameters for each source.
             
         Important:
-            - Catalog Initialization: The eFEDS astronomical catalog is loaded from the specified path, setting the foundation for all subsequent analyses.
+            - Catalog Initialization: The eRASS1 astronomical catalog is loaded from the specified path, setting the foundation for all subsequent analyses.
             - Nearby Sources Identification: The constructor employs a search radius to identify astronomical sources in close proximity to a specified celestial object, enhancing the relevance of the analysis.
             - Data Analysis Initiation: It initiates key analyses such as neighborhood visualization, which helps in understanding the spatial distribution of astronomical objects, and photon index calculation, crucial for characterizing the spectral properties of these objects.
             - Model Dictionary Creation: A model dictionary for the sources is created, which is vital for detailed astrophysical analysis and interpretation.
             - Versatility in Data Handling: The class is designed to handle user-provided data tables, although this functionality is not implemented in the current version, indicating potential for future expansion and customization.
-            - Coordinate System Specification: The class initializes specific coordinate columns ('RA' and 'DEC') for eFEDS data, ensuring accurate spatial referencing and alignment with astronomical standards.
+            - Coordinate System Specification: The class initializes specific coordinate columns ('RA' and 'DEC') for eRASS1 data, ensuring accurate spatial referencing and alignment with astronomical standards.
 
-        The eFEDSCatalog class, through its constructor, lays the groundwork for sophisticated astronomical data analysis, enabling researchers to unlock deeper insights from eFEDS telescope observations.
+        The eRASS1Catalog class, through its constructor, lays the groundwork for sophisticated astronomical data analysis, enabling researchers to unlock deeper insights from eRASS1 telescope observations.
         """    
         # ---------- coord ---------- #
-        self.ra = dict_cat.dictionary_coord["eFEDS"]["right_ascension"]
-        self.dec = dict_cat.dictionary_coord["eFEDS"]["declination"]
+        self.ra = dict_cat.dictionary_coord["eRASS1"]["right_ascension"]
+        self.dec = dict_cat.dictionary_coord["eRASS1"]["declination"]
         # --------------------------- #
 
         self.eRo_catalog = self.open_catalog(catalog_path)
@@ -141,18 +141,18 @@ class eFEDSCatalog:
         
     def open_catalog(self, catalog_path: str) -> Table:
         """
-        Opens a FITS file containing the eFEDS catalog and converts it into an astropy Table.
+        Opens a FITS file containing the eRASS1 catalog and converts it into an astropy Table.
 
-        This method is essential for loading the eFEDS catalog data. It utilizes the astropy library to handle FITS 
+        This method is essential for loading the eRASS1 catalog data. It utilizes the astropy library to handle FITS 
         files, a common format for storing astronomical data. By converting the FITS file into an astropy Table, 
         the data becomes more accessible and easier to manipulate for further analysis.
 
         Args:
-            catalog_path (str): The file path to the eFEDS catalog FITS file. This path should point to a valid 
-                                FITS file containing the eFEDS catalog data.
+            catalog_path (str): The file path to the eRASS1 catalog FITS file. This path should point to a valid 
+                                FITS file containing the eRASS1 catalog data.
 
         Returns:
-            Table: An astropy Table containing the data from the eFEDS catalog. This table structure allows for 
+            Table: An astropy Table containing the data from the eRASS1 catalog. This table structure allows for 
                 convenient handling and analysis of the catalog data, utilizing the rich feature set of astropy.
         """
 
@@ -162,10 +162,10 @@ class eFEDSCatalog:
         
     def find_nearby_sources(self, radius: Quantity, simulation_data: dict) -> Tuple[Table, SkyCoord]:
         """
-        Identifies and compiles a list of astronomical sources from the eFEDS catalog that are located near a specified 
+        Identifies and compiles a list of astronomical sources from the eRASS1 catalog that are located near a specified 
         celestial object.
 
-        This method is pivotal for studies focusing on specific regions of the sky. It filters the eFEDS catalog to 
+        This method is pivotal for studies focusing on specific regions of the sky. It filters the eRASS1 catalog to 
         identify sources within a defined radius from the target celestial object, using its astronomical coordinates. 
         The method enhances the data's relevance to specific astronomical queries or studies.
 
@@ -180,7 +180,7 @@ class eFEDSCatalog:
         Returns:
             Tuple[Table, SkyCoord]: A tuple containing two elements:
                 - An astropy Table listing the sources found near the specified celestial object. This table includes 
-                various details from the eFEDS catalog for each identified source.
+                various details from the eRASS1 catalog for each identified source.
                 - A SkyCoord object containing the coordinates of these nearby sources.
 
         Note:
@@ -212,15 +212,15 @@ class eFEDSCatalog:
 
         src_position = SkyCoord(ra=small_table[self.ra], dec=small_table[self.dec], unit=u.deg)
                 
-        print(f"{colored(f'Find sources close to {object_name} with eFEDS catalog', 'blue')}")
+        print(f"{colored(f'Find sources close to {object_name} with eRASS1 catalog', 'blue')}")
         for number in tqdm(range(len(small_table))):
             if c_f.ang_separation(object_position, src_position[number]) < radius:
                 nearby_sources_table.add_row(small_table[number])
         
-        column_name = {"source_name": "eFEDS_IAUNAME",
+        column_name = {"source_name": "eRASS_IAUNAME",
                        "right_ascension": self.ra,
                        "declination": self.dec,
-                       "catalog_name": "eFEDS"}
+                       "catalog_name": "eRASS1"}
         
         if len(nearby_sources_table) != 0:
             try:
@@ -247,7 +247,7 @@ class eFEDSCatalog:
     
     def neighbourhood_of_object(self, simulation_data: dict, radius: Quantity) -> None:
         """
-        Visualizes the neighborhood of a specified celestial object in the eFEDS catalog.
+        Visualizes the neighborhood of a specified celestial object in the eRASS1 catalog.
 
         This method creates a scatter plot showing the positions of sources found near the specified celestial object. 
         It highlights both the nearby sources and the object itself, helping to understand their spatial distribution.
@@ -290,9 +290,9 @@ class eFEDSCatalog:
 
     def visualization_inter(self, optimization_parameters, photon_index, key) -> None:
         """
-        Visualizes the interpolation of photon index values for sources in the eFEDS catalog.
+        Visualizes the interpolation of photon index values for sources in the eRASS1 catalog.
 
-        This method plots the relationship between photon index values and energy bands for sources in the eFEDS catalog. 
+        This method plots the relationship between photon index values and energy bands for sources in the eRASS1 catalog. 
         It showcases the spectral characteristics of these sources through a plot that combines error bars for observed 
         fluxes and absorbed power-law models.
 
@@ -329,14 +329,14 @@ class eFEDSCatalog:
 
     def optim_index(self, table, key, index) -> Tuple[List, Tuple]:
         """
-        Calculates the photon index for a source in the eFEDS catalog using an absorbed power-law model.
+        Calculates the photon index for a source in the eRASS1 catalog using an absorbed power-law model.
 
         This method fits the observed flux data of a source across various energy bands to an absorbed power-law model. 
         The fitting process takes into account both the flux values and their respective errors, resulting in a photon 
         index that characterizes the source's spectral properties.
 
         Args:
-            table (Table): An astropy Table containing the eFEDS catalog data.
+            table (Table): An astropy Table containing the eRASS1 catalog data.
             key (str): The key to access necessary data from 'dict_cat.dictionary_catalog'.
             index (int): The index of the source in the table for photon index calculation.
 
@@ -382,7 +382,7 @@ class eFEDSCatalog:
 
     def get_phoindex_nh(self) -> List[float]:
         """
-        Computes the photon index and hydrogen column density (Nh) for each source in the eFEDS catalog's nearby sources table.
+        Computes the photon index and hydrogen column density (Nh) for each source in the eRASS1 catalog's nearby sources table.
 
         This method calculates the photon index using an absorbed power-law model and assigns a default Nh value to each source. 
         It also includes a visualization step for the photon indices and updates the nearby sources table with these calculated values.
@@ -396,9 +396,9 @@ class eFEDSCatalog:
             - Visualization of photon indices aids in understanding the spectral characteristics of the sources.
 
         The method plays a crucial role in spectral analysis, allowing for a detailed examination of the high-energy properties 
-        of astronomical sources in the eFEDS catalog.
+        of astronomical sources in the eRASS1 catalog.
         """
-        key = "eFEDS"
+        key = "eRASS1"
         photon_index_list, parameters_list, nh_list = [], [], []
 
         for index in range(len(self.nearby_sources_table)):
@@ -437,7 +437,7 @@ class eFEDSCatalog:
 
         model = np.array([], dtype=str)
         model_value = np.array([], dtype=float)
-        flux_obs = dict_cat.dictionary_catalog["eFEDS"]["flux_obs"]
+        flux_obs = dict_cat.dictionary_catalog["eRASS1"]["flux_obs"]
         
         swi_flux = np.array([self.nearby_sources_table[flux_obs][item] for item in range(number_source)], dtype=float)
         nh_value = np.array([self.nearby_sources_table["Nh"][item] for item in range(number_source)], dtype=float)

@@ -6,7 +6,7 @@ import numpy as np
 
 # ------------------------------ #
 
-catalogs = ["XMM", "Chandra", "Swift", "eFEDS", "Slew", "Stacked", "RASS", "WGACAT"]
+catalogs = ["XMM", "Chandra", "Swift", "eRASS1", "Slew", "Stacked", "RASS", "WGACAT"]
 style = "bmh"
 cmap_to_use = "turbo"
 
@@ -76,7 +76,7 @@ dictionary_catalog = {
         "band_conv_factor_soft": 0.35/0.34,
         "band_conv_factor_hard": 0.65/0.56,
         "hr_track_marker": "s"},
-"eFEDS": {"flux_obs": "ML_FLUX",
+"eRASS1": {"flux_obs": "ML_FLUX",
                 "flux_obs_err": ["ML_FLUX_ERR", "ML_FLUX_ERR"],
                 "conv_factor": 1/0.39,
                 "time_name": "MJD_OBS",
@@ -171,7 +171,7 @@ dictionary_coord = {
                 "declination": "dec"},
 "Swift": {"right_ascension": "RA",
         "declination": "DEC"},
-"eFEDS": {"right_ascension": "RA",
+"eRASS1": {"right_ascension": "RA",
                 "declination": "DEC"}
 }
 
