@@ -497,6 +497,8 @@ def main():
             if '_' in args.name:
                 object_name = args.name.replace('_', " ")
                 print(f"\nCollecting data for {colored(object_name, 'magenta')}")
+            else:
+                object_name = args.name
             try:
                 object_position = i_f.get_coord_psr(object_name)
                 print(f"\n{colored(object_name, 'green')} is in Simbad Database, here is his coordinate :\n{object_position}")
@@ -783,6 +785,7 @@ def main():
                         "stilts_software_path": stilts_software_path,
                         "topcat_software_path": topcat_software_path}
         
+        simulation_data["os_dictionary"] = os_dictionary
         # call eFEDS Class to make modeling
         eRo = eFEDSCatalog(catalog_path=catalog_path, radius=radius, simulation_data=simulation_data, user_table=add_source_table)
         nearby_sources_table, nearby_sources_position = eRo.nearby_sources_table, eRo.nearby_sources_position
@@ -793,7 +796,7 @@ def main():
                             "band_flux_obs_err": dict_cat.dictionary_catalog[key]["band_flux_obs_err"],
                             "energy_band": dict_cat.dictionary_catalog[key]["energy_band_center"],
                             "sigma": np.array(list(np.linspace(1e-20, 1e-24, len(dict_cat.dictionary_catalog[key]["energy_band_center"])))),
-                            "data_to_vignetting": ["RA", "DEC", "Swift_IAUNAME"]}
+                            "data_to_vignetting": ["RA", "DEC", "eFEDS_IAUNAME"]}
         
         simulation_data["os_dictionary"]["catalog_key"] = key
         

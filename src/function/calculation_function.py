@@ -343,7 +343,7 @@ def vignetting_factor(OptimalPointingIdx, vector_dictionary, simulation_data, da
         distance = np.append(distance, SRCnominalDIST)
         vignetting = calculate_vignetting_factor(SRCnominalDIST, EffArea, OffAxisAngle)
         vignetting_factor = np.append(vignetting_factor, vignetting)
-    
+
     optimal_pointing_point = SkyCoord(ra=optipoint_ra, dec=optipoint_dec, unit=u.deg)
     psr_position = SkyCoord(ra=object_data['object_position'].ra, dec=object_data['object_position'].dec, unit=u.deg)
     distance_psr_to_optipoint = ang_separation(psr_position, optimal_pointing_point).arcmin

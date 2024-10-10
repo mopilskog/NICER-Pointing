@@ -245,7 +245,7 @@ class eFEDSCatalog:
             print(f"An error occured : {error}")
     
     
-    def neighbourhood_of_object(self, dictionary: dict, radius: Quantity) -> None:
+    def neighbourhood_of_object(self, simulation_data: dict, radius: Quantity) -> None:
         """
         Visualizes the neighborhood of a specified celestial object in the eFEDS catalog.
 
@@ -266,16 +266,21 @@ class eFEDSCatalog:
             to save the plot.
         """
         
-        object_position = dictionary['object_position']
-    
+        #object_position = simulation_data['object_position']
+        object_data = simulation_data["object_data"]
+        object_name =  object_data['object_name']
+
         ero_ra = self.nearby_sources_table[self.ra]
         ero_dec = self.nearby_sources_table[self.dec]
+
+        obj_ra = object_data['object_position'].ra
+        obj_dec = object_data['object_position'].dec
         
         figure_1, axes = plt.subplots(1, 1, figsize=(12, 8))
-        figure_1.suptitle(f"Neighbourhood of {dictionary['object_name']}, radius = {radius}", fontsize=20)
+        figure_1.suptitle(f"Neighbourhood of {object_name}, radius = {radius}", fontsize=20)
         
-        axes.scatter(ero_ra, ero_dec, c='black', s=1, marker='*', label=f"Sources close to {dictionary['object_name']}, nbr_src : {len(ero_ra)}")
-        axes.scatter(object_position.ra, object_position.dec, c='red', s=100, marker='+', label=f"{dictionary['object_name']}")
+        axes.scatter(ero_ra, ero_dec, c='black', s=1, marker='*', label=f"Sources close to {object_name}, nbr_src : {len(ero_ra)}")
+        axes.scatter(obj_ra, obj_dec, c='red', s=100, marker='+', label=f"{object_name}")
         axes.set_xlabel('Right Ascension [deg]', fontsize=16)
         axes.set_ylabel('Declination [deg]', fontsize=16)
         axes.legend(loc='upper right')
