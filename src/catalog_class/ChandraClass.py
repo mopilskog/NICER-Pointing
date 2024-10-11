@@ -555,7 +555,7 @@ class ChandraCatalog:
             
             axes.errorbar(energy_band, flux_obs, flux_obs_err, fmt='*', color='red', ecolor='black')
             axes.plot(energy_band, absorbed_power_law, label=f"$\Gamma$ = {absorb_pho_index:.8f}")
-    
+            
         axes.legend(loc="upper left", ncol=4, fontsize=6)
         axes.loglog()
         
@@ -678,7 +678,10 @@ class ChandraCatalog:
                 
         self.visualization_interp(optimization_parameters=cs_parameters_list, photon_index=cs_photon_index_list, key=cs_key)
 
+        self.nearby_sources_table["Chandra_IAUNAME"] = [n.strip() for n in self.nearby_sources_table["Chandra_IAUNAME"]]
         for index, name in enumerate(list(self.cone_search_catalog['name'])): 
+            name = name.strip()  # Remove leading/trailing spaces
+
             if name in self.nearby_sources_table["Chandra_IAUNAME"]:
                 nearby_index = list(self.nearby_sources_table["Chandra_IAUNAME"]).index(name)
                 if self.cone_search_catalog["powlaw_gamma"][index] != 0.0:
@@ -695,8 +698,6 @@ class ChandraCatalog:
                     self.nh_list.append(3e20)
         
         self.visualization_interp(optimization_parameters=parameters_list, photon_index=photon_index_list, key=key)
-        a =len(photon_index_list)
-        b = len(self.nearby_sources_table)
         self.nearby_sources_table["Photon Index"] = photon_index_list
         self.nearby_sources_table["Nh"] = self.nh_list
         
