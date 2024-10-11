@@ -384,8 +384,9 @@ def write_fits_file(nearby_sources_table, simulation_data) -> None:
         print(f"Nearby sources table was created in : {colored(nearby_sources_table_path, 'magenta')}")
         
         topcat_path = os_dictionary["topcat_software_path"]
-        command = f"java -jar {topcat_path} {nearby_sources_table_path}"
-        subprocess.run(command)
+
+        command = ['java', '-jar', topcat_path, nearby_sources_table_path]  # Command as a list
+        subprocess.run(command, check=True)  # check=True raises an error if the command fails
         
     except Exception as error:
         print(f"{colored('An error occured : ', 'red')} {error}")

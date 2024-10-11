@@ -20,7 +20,7 @@ import os
 import numpy as np
 import catalog_information as dict_cat
 import matplotlib.pyplot as plt
-
+from matplotlib.lines import Line2D
 # ------------------------------ #
 
 # ---------- for documentation ---------- #
@@ -259,11 +259,13 @@ def master_source_plot(master_sources: Dict, simulation_data: Dict, number_graph
 
         # plt.figure(figsize=(15, 8))
         figure, axes = plt.subplots(1, 1, figsize=(15, 8))
+        legend_elements = []  # List to store custom legend entries
         for catalog in multi_instrument_source.sources.keys():
             #If a given catalog is contained in this source, it will be in the "sources" dictionary, catalog as key,
             #source object as value
             catalog_source = multi_instrument_source.sources[catalog]
             tab_width = 2 * np.array(dict_cat.dictionary_catalog[catalog]["energy_band_half_width"])
+            
             for band_det in range(len(catalog_source.band_flux)):
                 #The band fluxes are stored in catalog_source.band_flux. They're in erg/s/cm2, so divide by tab_width to
                 #be in erg/s/cm2/keV. Here I plot them, but you can do whatever you want with those
@@ -275,10 +277,13 @@ def master_source_plot(master_sources: Dict, simulation_data: Dict, number_graph
                               yerr=[catalog_source.band_flux_err[0][band_det] / tab_width,
                                     catalog_source.band_flux_err[1][band_det] / tab_width],
                               fmt="o", markeredgecolor='gray', c=dict_cat.colors[catalog], alpha=0.4)
-            axes.step([], [], c=dict_cat.colors[catalog], label=f"{catalog_source.iau_name}, {catalog}")
+            
+            legend_element = Line2D([0], [0], color=dict_cat.colors[catalog], label=f"{catalog_source.iau_name}, {catalog}")
+            legend_elements.append(legend_element)
+        
+        axes.legend(handles=legend_elements, loc='best')
         axes.set_xlabel("Energy [keV]")
         axes.set_ylabel(r"$F_{\nu}$ [$\mathrm{erg.s}^{-1}.\mathrm{cm}^{-2}.\mathrm{keV}^{-1}$]")
-        axes.legend()
         axes.loglog()
         
         img_path = os.path.join(plot_var_sources_path, f'sources_plot_{count}.png')
