@@ -16,7 +16,10 @@ colors = {}
 
 for index, cat in enumerate(catalogs):
         posErr_Names[cat]=f"{cat}_PosErr"
-        src_names[cat] = f"{cat}_IAUNAME"
+        if cat=="eRASS1":
+                src_names[cat] = "eRASS_IAUNAME"
+        else:
+                src_names[cat] = f"{cat}_IAUNAME"
         colors[cat] = matplotlib.cm.get_cmap(cmap_to_use)(index / len(catalogs))
 
 dictionary_catalog = {

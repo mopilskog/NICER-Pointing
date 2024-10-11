@@ -969,9 +969,14 @@ def main():
         for cat in catalogs:
             path_to_cat_init = os.path.join(catalog_datapath, cat).replace("\\", "/")
             path_to_cat_final = os.path.join(output_name, cat).replace("\\", "/")
-            command = (f"java -jar {stilts_software_path} tmatch2 matcher=exact \
-                    in1='{master_cone_path}' in2='{path_to_cat_init}.fits' out='{path_to_cat_final}.fits'\
-                        values1='{cat}' values2='{cat}_IAUNAME' find=all progress=none")
+            if cat=="eRASS1":
+                command = (f"java -jar {stilts_software_path} tmatch2 matcher=exact \
+                        in1='{master_cone_path}' in2='{path_to_cat_init}.fits' out='{path_to_cat_final}.fits'\
+                            values1='{cat}' values2='eRASS_IAUNAME' find=all progress=none")
+            else: 
+                command = (f"java -jar {stilts_software_path} tmatch2 matcher=exact \
+                        in1='{master_cone_path}' in2='{path_to_cat_init}.fits' out='{path_to_cat_final}.fits'\
+                            values1='{cat}' values2='{cat}_IAUNAME' find=all progress=none")
             command = shlex.split(command)
             subprocess.run(command)
 
