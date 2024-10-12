@@ -380,6 +380,20 @@ def write_fits_file(nearby_sources_table, simulation_data) -> None:
         key = os_dictionary["catalog_key"]
         cloesest_dataset_path = os_dictionary["cloesest_dataset_path"]
         nearby_sources_table_path = os.path.join(cloesest_dataset_path, f"{key}_nearby_sources_table.fits").replace("\\", "/")
+        # Find the longest name & Convert all entries to the uniform max length
+        cat_name = key + "_IAUNAME"
+        #print(cat_name)
+        if key =="CS_Chandra":
+            cat_name = "name"
+            max_len = max(len(str(col_name)) for col_name in nearby_sources_table["likelihood_class"])
+            nearby_sources_table["likelihood_class"] = np.array([str(col_name).ljust(max_len) for col_name in nearby_sources_table["likelihood_class"]])
+
+        if key =="eRASS1":
+            cat_name = "eRASS_IAUNAME"
+        max_len = max(len(str(name)) for name in nearby_sources_table[cat_name])
+        nearby_sources_table[cat_name] = np.array([str(name).ljust(max_len) for name in nearby_sources_table[cat_name]])
+
+        
         nearby_sources_table.write(nearby_sources_table_path, format='fits', overwrite=True)
         print(f"Nearby sources table was created in : {colored(nearby_sources_table_path, 'magenta')}")
         

@@ -409,7 +409,8 @@ class MatchCatalog:
             
             unique_table.write(chandra_catalog, format='fits', overwrite=True)
             topcat_path = os.path.join(os_dictionary["active_workflow"], 'softwares/topcat-extra.jar').replace("\\", "/")
-            command = f"java -jar {topcat_path} {chandra_catalog}"
+            #command = f"java -jar {topcat_path} {chandra_catalog}"
+            command = ['java', '-jar', topcat_path, chandra_catalog] 
             subprocess.run(command)
         
             unique_table = u_f.create_unique_sources_catalog(nearby_sources_table=nearby_sources_table_2, column_name=column_name)
@@ -1033,8 +1034,8 @@ class MatchCatalog:
             self.nearby_sources_table.write(nearby_sources_table_path, format='fits', overwrite=True)
             print(f"Nearby sources table was created in : {colored(nearby_sources_table_path, 'magenta')}")
             
-            topcat_path = os.path.join(os_dictionary["active_workflow"], 'softwares/topcat-extra.jar').replace("\\", "/")
-            command = f"java -jar {topcat_path} {nearby_sources_table_path}"
+            topcat_path = os_dictionary["topcat_software_path"]
+            command = ['java', '-jar', topcat_path, nearby_sources_table_path]  # Command as a list
             subprocess.run(command)
             
         except Exception as error:
@@ -1093,9 +1094,14 @@ class MatchCatalog:
             for cat in catalogs:
                 path_to_cat_init = os.path.join(catalog_datapath, cat).replace("\\", "/")
                 path_to_cat_final = os.path.join(output_name, cat).replace("\\", "/")
-                command = (f"java -jar {stilts_software_path} tmatch2 matcher=exact \
+                if cat == 'eRASS1':
+                    command = (f"java -jar {stilts_software_path} tmatch2 matcher=exact \
                         in1='{master_cone_path}' in2='{path_to_cat_init}.fits' out='{path_to_cat_final}.fits'\
-                            values1='{cat}' values2='{cat}_IAUNAME' find=all progress=none")
+                            values1='{cat}' values2='eRASS_IAUNAME' find=all progress=none")
+                else:
+                    command = (f"java -jar {stilts_software_path} tmatch2 matcher=exact \
+                            in1='{master_cone_path}' in2='{path_to_cat_init}.fits' out='{path_to_cat_final}.fits'\
+                                values1='{cat}' values2='{cat}_IAUNAME' find=all progress=none")
                 command = shlex.split(command)
                 subprocess.run(command)
 
@@ -1112,7 +1118,10 @@ class MatchCatalog:
             
         path = os.path.join(output_name, "Master_source_cone.fits").replace("\\", "/")
         
-        command = f"java -jar {topcat_software_path} {path}"
+        #command = f"java -jar {topcat_software_path} {path}"
+        #subprocess.run(command)
+        topcat_path = os_dictionary["topcat_software_path"]
+        command = ['java', '-jar', topcat_path, path]
         subprocess.run(command)
         
         with fits.open(path, memmap=True) as data:

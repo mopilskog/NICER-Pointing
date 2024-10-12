@@ -65,6 +65,8 @@ def cross_catalog_index(output_name: str, key: str, iauname: str, nearby_sources
     msc_name = [name for name in master_source_cone[key] if name != ""]
     var_index_in_nearby_sources_table = []
     for name in msc_name:
+        a = nearby_sources_table[iauname]
+        b = (nearby_sources_table[iauname] == name)
         if name in nearby_sources_table[iauname]:
             index_in_table = list(nearby_sources_table[iauname]).index(name)
             var_index_in_nearby_sources_table.append(index_in_table)
@@ -196,7 +198,6 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
     spectrum_var_summed = 0.0
     for item in range(len(total_var_spectra)):
         spectrum_var_summed += total_var_spectra[item]  
-
     y_upper = np.median(spectrum_summed, axis=0) + np.median(spectrum_var_summed, axis=0)
     y_lower = np.median(spectrum_summed, axis=0) - np.median(spectrum_var_summed, axis=0)
 

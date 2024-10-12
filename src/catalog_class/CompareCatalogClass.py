@@ -570,7 +570,7 @@ class CompareCatalog:
                                        "declination": "DEC",
                                        "catalog_name": "Swift"}
                     elif key[0] == "eRASS1":
-                        column_name = {"source_name": "eRASS1_IAUNAME",
+                        column_name = {"source_name": "eRASS_IAUNAME",
                                        "right_ascension": "RA",
                                        "declination": "DEC",
                                        "catalog_name": "eRASS1"}

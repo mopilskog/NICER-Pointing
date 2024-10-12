@@ -842,14 +842,14 @@ def main():
         model = Tbabs() * Powerlaw()
 
         # load instrument parameters
-        instrument = Instrument.from_ogip_file(nicer_data_arf, nicer_data_rmf, exposure=args.exp_time)
-
+        instrument = Instrument.from_ogip_file(nicer_data_rmf, nicer_data_arf)
+        obsconfig= ObsConfiguration.mock_from_instrument(instrument, exposure=args.exp_time)
         # load all of the sources spetcra
-        total_spectra, total_var_spectra = j_f.modeling_source_spectra(nearby_sources_table=nearby_sources_table, instrument=instrument, model=model, var_index=var_index)
-
+        #total_spectra, total_var_spectra = j_f.modeling_source_spectra(nearby_sources_table=nearby_sources_table, instrument=instrument, model=model, var_index=var_index)
+        total_spectra, total_var_spectra = j_f.modeling_source_spectra(nearby_sources_table=nearby_sources_table, obsconfig=obsconfig, model=model, var_index=var_index)
         # plot of all spectra data
-        data = j_f.total_plot_spectra(total_spectra=total_spectra, total_var_spectra=total_var_spectra, instrument=instrument, simulation_data=simulation_data, catalog_name="xmmXchandra")
-
+        #data = j_f.total_plot_spectra(total_spectra=total_spectra, total_var_spectra=total_var_spectra, instrument=instrument, simulation_data=simulation_data, catalog_name="xmmXchandra")
+        data = j_f.total_plot_spectra(total_spectra=total_spectra, total_var_spectra=total_var_spectra,obsconfig=obsconfig, simulation_data=simulation_data, catalog_name="xmmXchandra")
         # output spectre plot
         j_f.write_txt_file(simulation_data=simulation_data, data=data)
         
