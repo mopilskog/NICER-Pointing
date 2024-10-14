@@ -79,20 +79,6 @@ dictionary_catalog = {
         "band_conv_factor_soft": 0.35/0.34,
         "band_conv_factor_hard": 0.65/0.56,
         "hr_track_marker": "s"},
-"eRASS1": {"flux_obs": "ML_FLUX",
-                "flux_obs_err": ["ML_FLUX_ERR", "ML_FLUX_ERR"],
-                "conv_factor": 1/0.39,
-                "time_name": "MJD_OBS",
-                "obsid_name": np.nan,
-                "band_flux_obs": [f"ML_FLUX_b{item +1}" for item in range(4)],
-                "band_flux_obs_err": [[f"ML_FLUX_ERR_b{item + 1}" for item in range(4)],
-                                [f"ML_FLUX_ERR_b{item + 1}" for item in range(4)]],
-                "energy_band_center": [0.35, 0.75, 1.5, 3.25],
-                "energy_band_half_width": [0.15, 0.25, 0.5, 1.25],
-                "hr_bandlimit_index": 3,
-                "band_conv_factor_soft": 0.35/0.35,
-                "band_conv_factor_hard": 0.65/0.24,
-                "hr_track_marker": "^"},
 "Slew": {"flux_obs": "Flux",
         "flux_obs_err": ["FluxErr", "FluxErr"],
         "conv_factor": 1/0.999,
@@ -162,7 +148,7 @@ dictionary_catalog = {
                 "hr_bandlimit_index": 3,
                 "band_conv_factor_soft": 0.35/0.35,
                 "band_conv_factor_hard": 0.65/0.24,
-                "hr_track_marker": "^"}
+                "hr_track_marker": "^"},
 }
 
 dictionary_coord = {
