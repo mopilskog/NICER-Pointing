@@ -13,6 +13,8 @@ from tqdm import tqdm
 from jaxspec.model.multiplicative import Tbabs
 from jaxspec.model.additive import Powerlaw
 from jaxspec.data.instrument import Instrument
+from jaxspec.data.observation import Observation
+from jaxspec.data import ObsConfiguration
 from jaxspec.data.util import fakeit_for_multiple_parameters
 
 # ---------- import function ---------- #
@@ -202,10 +204,10 @@ class CompareCatalog:
             ero_index = [key_1, key_2].index("eRASS1")
             if ero_index == 0:
                 self.nearby_sources_table_1 = self.photon_index_nh_for_other_catalog(key="eRASS1", table=self.nearby_sources_table_1)
-                vignet_data_1 = ["RA", "DEC", "eRASS1_IAUNAME"]
+                vignet_data_1 = ["RA", "DEC", "eRASS_IAUNAME"]
             if ero_index == 1:
                 self.nearby_sources_table_2 = self.photon_index_nh_for_other_catalog(key="eRASS1", table=self.nearby_sources_table_2)
-                vignet_data_2 = ["RA", "DEC", "eRASS1_IAUNAME"]
+                vignet_data_2 = ["RA", "DEC", "eRASS_IAUNAME"]
 
         self.neighbourhood_of_object(key=(key_1, key_2), simulation_data=simulation_data, radius=radius)
         self.model_dictionary_1, self.model_dictionary_2 = self.dictionary_model(key=(key_1, key_2))
@@ -235,9 +237,8 @@ class CompareCatalog:
         self.write_fits_table(table=self.nearby_sources_table_2, key=key_2, os_dictionary=simulation_data["os_dictionary"])
         # -------------------------------- #
         
-        self.total_spectra_1, self.total_spectra_2, self.total_var_spectra_1, self.total_var_spectra_2, self.instrument = self.modeling_source_spectra(simulation_data=simulation_data, exp_time=exp_time, key=(key_1, key_2))
-        self.data_1, self.data_2 = self.total_spectra_plot(simulation_data=simulation_data, radius=radius.value, key=(key_1, key_2))
-        
+        self.total_spectra_1, self.total_spectra_2, self.total_var_spectra_1, self.total_var_spectra_2, self.obsconfig = self.modeling_source_spectra(simulation_data=simulation_data, exp_time=exp_time, key=(key_1, key_2))
+        self.data_1, self.data_2 = self.total_spectra_plot(simulation_data=simulation_data, radius=radius.value,obsconfig=self.obsconfig, key=(key_1, key_2))
         self.write_txt_file(simulation_data=simulation_data, data_1=self.data_1, data_2=self.data_2, key=(key_1, key_2))
         
     
@@ -394,7 +395,7 @@ class CompareCatalog:
                                        "declination": "DEC",
                                        "catalog_name": "Swift"}
                     elif key[1] == "eRASS1":
-                        column_name = {"source_name": "eRASS1_IAUNAME",
+                        column_name = {"source_name": "eRASS_IAUNAME",
                                        "right_ascension": "RA",
                                        "declination": "DEC",
                                        "catalog_name": "eRASS1"}
@@ -465,7 +466,7 @@ class CompareCatalog:
                                        "declination": "DEC",
                                        "catalog_name": "Swift"}
                     elif key[0] == "eRASS1":
-                        column_name = {"source_name": "eRASS1_IAUNAME",
+                        column_name = {"source_name": "eRASS_IAUNAME",
                                        "right_ascension": "RA",
                                        "declination": "DEC",
                                        "catalog_name": "eRASS1"}
@@ -530,7 +531,7 @@ class CompareCatalog:
                                        "declination": "DEC",
                                        "catalog_name": "Swift"}
                     elif key[1] == "eRASS1":
-                        column_name = {"source_name": "eRASS1_IAUNAME",
+                        column_name = {"source_name": "eRASS_IAUNAME",
                                        "right_ascension": "RA",
                                        "declination": "DEC",
                                        "catalog_name": "eRASS1"}
@@ -630,7 +631,7 @@ class CompareCatalog:
                                        "declination": "DEC",
                                        "catalog_name": "Swift"}
                     elif key[0] == "eRASS1":
-                        column_name = {"source_name": "eRASS1_IAUNAME",
+                        column_name = {"source_name": "eRASS_IAUNAME",
                                        "right_ascension": "RA",
                                        "declination": "DEC",
                                        "catalog_name": "eRASS1"}
@@ -663,7 +664,7 @@ class CompareCatalog:
                                            "declination": "DEC",
                                            "catalog_name": "Swift"}
                         elif key[1] == "eRASS1":
-                            column_name = {"source_name": "eRASS1_IAUNAME",
+                            column_name = {"source_name": "eRASS_IAUNAME",
                                            "right_ascension": "RA",
                                            "declination": "DEC",
                                            "catalog_name": "eRASS1"}
@@ -713,7 +714,7 @@ class CompareCatalog:
                            "band_flux_obs_err": dict_cat.dictionary_catalog[key]["band_flux_obs_err"],
                            "energy_band_center": dict_cat.dictionary_catalog[key]["energy_band_center"],
                            "energy_band_half_width": dict_cat.dictionary_catalog[key]["energy_band_half_width"]}
-        
+            
         if key == "Swift":
             interp_data = {"band_flux_obs": dict_cat.dictionary_catalog[key]["band_flux_obs"],
                            "band_flux_obs_err": dict_cat.dictionary_catalog[key]["band_flux_obs_err"],
@@ -730,6 +731,11 @@ class CompareCatalog:
             sigma = np.array(np.linspace(1e-20, 1e-24, len(energy_band)), dtype=float)
             return (constant * energy_band ** (-gamma)) * (np.exp(-sigma * 3e20))
         
+        def absorbed_power_law2(energy_band, constant, gamma):
+            energy_band = np.array(energy_band, dtype=float)
+            sigma = np.array([1e-20, 1e-22, 1e-24], dtype=float)
+            return (constant * energy_band **(-gamma)) * (np.exp(-sigma*3e20))
+        
         tab_width = 2 * interp_data["energy_band_half_width"]
         
         flux_obs = [table[name][index] for name in interp_data["band_flux_obs"]]
@@ -740,15 +746,33 @@ class CompareCatalog:
         
         y_array = [num/det for num, det in zip(flux_obs, tab_width)]
         yerr_array = [num/det for num, det in zip(flux_err_obs, tab_width)]
-        
-        popt, pcov = curve_fit(absorbed_power_law, interp_data["energy_band_center"], y_array, sigma=yerr_array)
-        constant, absorb_pho_index = popt
 
-        optimization_parameters = (interp_data["energy_band_center"], y_array, yerr_array, absorbed_power_law(interp_data["energy_band_center"], *popt))
+        try:
+            if key == "CS_Chandra":
+                popt, pcov = curve_fit(absorbed_power_law2, interp_data["energy_band_center"], y_array, sigma=yerr_array)
+                constant, absorb_pho_index = popt
+            else:
+                popt, pcov = curve_fit(absorbed_power_law, interp_data["energy_band_center"], y_array, sigma=yerr_array)
+                constant, absorb_pho_index = popt
+        except Exception as error:
+            #popt = (1e-14, 1.7)
+            if key == "CS_Chandra":
+                constant = 1.0  # Reasonable default for constant
+                absorb_pho_index = 1.7  # Default for photon index
+                popt = [constant, absorb_pho_index] 
+            else:
+                popt = (1e-14, 1.7) # Use these defaults for popt
+    
+        #popt, pcov = curve_fit(absorbed_power_law, interp_data["energy_band_center"], y_array, sigma=yerr_array)
+        #constant, absorb_pho_index = popt
+        if key == "CS_Chandra":
+            optimization_parameters = (interp_data["energy_band_center"], y_array, yerr_array, absorbed_power_law2(interp_data["energy_band_center"], *popt))
+        else:
+            optimization_parameters = (interp_data["energy_band_center"], y_array, yerr_array, absorbed_power_law(interp_data["energy_band_center"], *popt))
         
         return optimization_parameters, absorb_pho_index
     
-    
+
     def visualization_interp(self, optimization_parameters, photon_index, key) -> None:
         """
         Visualizes the interpolation of photon indices using an absorbed power-law model.
@@ -1287,7 +1311,7 @@ class CompareCatalog:
             ct_rate_value = float(result.split("predicts")[1].split('cps')[0])
             ct_rates_1 = np.append(ct_rates_1, ct_rate_value)
             
-            self.nearby_sources_table_1["count_rate"] = ct_rates_1
+        self.nearby_sources_table_1["count_rate"] = ct_rates_1
             
         for item in range(number_source_2):
             model_2 = self.model_dictionary_2[f"src_{item}"]["model"]
@@ -1305,9 +1329,10 @@ class CompareCatalog:
             ct_rate_value = float(result.split("predicts")[1].split('cps')[0])
             ct_rates_2 = np.append(ct_rates_2, ct_rate_value)
             
-            self.nearby_sources_table_2["count_rate"] = ct_rates_2
+        self.nearby_sources_table_2["count_rate"] = ct_rates_2
         
         return ct_rates_1, ct_rates_2
+        
     
     
     def xslx_to_py(self, args, table, simulation_data, radius) -> Tuple[List, Table]:
@@ -1533,11 +1558,18 @@ class CompareCatalog:
             print('Selecting catalog sources')
             master_cone_path = os.path.join(output_name, 'Master_source_cone.fits').replace("\\", "/")
             for cat in dict_cat.catalogs:
-                path_to_cat_init = os.path.join(catalog_datapath, cat).replace("\\", "/")
-                path_to_cat_final = os.path.join(output_name, cat).replace("\\", "/")
-                command = (f"java -jar {stilts_software_path} tmatch2 matcher=exact \
-                        in1='{master_cone_path}' in2='{path_to_cat_init}.fits' out='{path_to_cat_final}.fits'\
-                            values1='{cat}' values2='{cat}_IAUNAME' find=all progress=none")
+                if cat == "eRASS1":
+                    path_to_cat_init = os.path.join(catalog_datapath, cat).replace("\\", "/")
+                    path_to_cat_final = os.path.join(output_name, cat).replace("\\", "/")
+                    command = (f"java -jar {stilts_software_path} tmatch2 matcher=exact \
+                            in1='{master_cone_path}' in2='{path_to_cat_init}.fits' out='{path_to_cat_final}.fits'\
+                                values1='{cat}' values2='eRASS_IAUNAME' find=all progress=none")
+                else:
+                    path_to_cat_init = os.path.join(catalog_datapath, cat).replace("\\", "/")
+                    path_to_cat_final = os.path.join(output_name, cat).replace("\\", "/")
+                    command = (f"java -jar {stilts_software_path} tmatch2 matcher=exact \
+                            in1='{master_cone_path}' in2='{path_to_cat_init}.fits' out='{path_to_cat_final}.fits'\
+                                values1='{cat}' values2='{cat}_IAUNAME' find=all progress=none")
                 command = shlex.split(command)
                 subprocess.run(command)
 
@@ -1614,8 +1646,21 @@ class CompareCatalog:
         try:            
             cloesest_dataset_path = os_dictionary["cloesest_dataset_path"]
             nearby_sources_table_path = os.path.join(cloesest_dataset_path, f"{key}_nearby_sources_table.fits").replace("\\", "/")
-            table.write(nearby_sources_table_path, format='fits', overwrite=True)
-            print(f"Nearby sources table was created in : {colored(nearby_sources_table_path, 'magenta')}")
+
+            cat_name = key + "_IAUNAME"
+        #print(cat_name)
+            if key =="CS_Chandra":
+                cat_name = "name"
+                max_len = max(len(str(col_name)) for col_name in table["likelihood_class"])
+                table["likelihood_class"] = np.array([str(col_name).ljust(max_len) for col_name in table["likelihood_class"]])
+
+            if key =="eRASS1":
+                cat_name = "eRASS_IAUNAME"
+                max_len = max(len(str(name)) for name in table[cat_name])
+                table[cat_name] = np.array([str(name).ljust(max_len) for name in table[cat_name]])
+
+                table.write(nearby_sources_table_path, format='fits', overwrite=True)
+                print(f"Nearby sources table was created in : {colored(nearby_sources_table_path, 'magenta')}")
         except Exception as error:
             print(f"{colored('An error occured : ', 'red')} {error}")
     
@@ -1649,8 +1694,10 @@ class CompareCatalog:
         nicer_data_arf = telescop_data["nicer_data_arf"]
         nicer_data_rmf = telescop_data["nicer_data_rmf"]
         
-        instrument = Instrument.from_ogip_file(nicer_data_arf, nicer_data_rmf, exposure=exp_time)
+        instrument = Instrument.from_ogip_file(nicer_data_rmf, nicer_data_arf)
         
+        obsconfig = ObsConfiguration.mock_from_instrument(instrument, exp_time)
+
         print(f"\n{colored(f'Modeling spectra for {key[0]} catalog... ', 'yellow')}")
         size = 10_000
         
@@ -1665,7 +1712,7 @@ class CompareCatalog:
                 }
             }
             
-            spectra = fakeit_for_multiple_parameters(instrument=instrument, model=model, parameters=parameters) * vignet_factor
+            spectra = fakeit_for_multiple_parameters(instrument=obsconfig, model=model, parameters=parameters) * vignet_factor
             
             if index in self.var_index_1:
                 total_var_spectra_1.append(spectra)
@@ -1684,7 +1731,7 @@ class CompareCatalog:
                 }
             }
             
-            spectra = fakeit_for_multiple_parameters(instrument=instrument, model=model, parameters=parameters) * vignet_factor
+            spectra = fakeit_for_multiple_parameters(instrument=obsconfig, model=model, parameters=parameters) * vignet_factor
             
             if index in self.var_index_1:
                 total_var_spectra_2.append(spectra)
@@ -1692,10 +1739,10 @@ class CompareCatalog:
             total_spectra_2.append(spectra)
             
             
-        return total_spectra_1, total_spectra_2, total_var_spectra_1, total_var_spectra_2, instrument
+        return total_spectra_1, total_spectra_2, total_var_spectra_1, total_var_spectra_2, obsconfig
      
     
-    def total_spectra_plot(self, simulation_data: Dict, radius: float, key: Tuple[str, str]):
+    def total_spectra_plot(self, simulation_data: Dict, radius: float, obsconfig, key: Tuple[str, str]):
         """
         Plots the modeled spectra for sources around a specific object from two different catalogs.
 
@@ -1750,7 +1797,7 @@ class CompareCatalog:
         # ---------- first row ---------- #
         
         for spectra in self.total_spectra_1:
-            ax00.step(self.instrument.out_energies[0],
+            ax00.step(obsconfig.out_energies[0],
                       np.median(spectra, axis=0),
                       where="post")
         ax00.set_title("All spectra of nearby sources table")
@@ -1763,17 +1810,17 @@ class CompareCatalog:
         for index in range(len(self.total_var_spectra_1)):
             spectrum_var_summed_1 += self.total_var_spectra_1[index]
         
-        ax01.errorbar(self.instrument.out_energies[0], y=np.median(spectrum_summed_1, axis=0), yerr=np.median(spectrum_var_summed_1, axis=0), 
+        ax01.errorbar(obsconfig.out_energies[0], y=np.median(spectrum_summed_1, axis=0), yerr=np.median(spectrum_var_summed_1, axis=0), 
                     fmt="none", ecolor='red', capsize=2, capthick=3,
                     label='error')
-        ax01.step(self.instrument.out_energies[0], np.median(spectrum_summed_1, axis=0), color='black', label="sum powerlaw")
+        ax01.step(obsconfig.out_energies[0], np.median(spectrum_summed_1, axis=0), color='black', label="sum powerlaw")
         ax01.set_title("Spectrum Summed with var sources error")
         ax01.legend(loc='upper right')
         
         # ---------- second row ---------- #
         
         for spectra in self.total_spectra_2:
-            ax10.step(self.instrument.out_energies[0],
+            ax10.step(obsconfig.out_energies[0],
                       np.median(spectra, axis=0),
                       where="post")
         
@@ -1785,24 +1832,24 @@ class CompareCatalog:
         for index in range(len(self.total_var_spectra_2)):
             spectrum_var_summed_2 += self.total_var_spectra_2[index]
             
-        ax11.errorbar(self.instrument.out_energies[0], y=np.median(spectrum_summed_2, axis=0), yerr=np.median(spectrum_var_summed_2, axis=0), 
+        ax11.errorbar(obsconfig.out_energies[0], y=np.median(spectrum_summed_2, axis=0), yerr=np.median(spectrum_var_summed_2, axis=0), 
                     fmt="none", ecolor='red', capsize=2, capthick=3,
                     label='error')
-        ax11.step(self.instrument.out_energies[0], np.median(spectrum_summed_2, axis=0), color='black', label="sum powerlaw")
+        ax11.step(obsconfig.out_energies[0], np.median(spectrum_summed_2, axis=0), color='black', label="sum powerlaw")
         ax11.legend(loc='upper right')
         
         # ---------- big axes ---------- #
         
         new_ax = figure_spectra.add_subplot(1, 3, 3)
-        new_ax.errorbar(self.instrument.out_energies[0], y=np.median(spectrum_summed_1, axis=0), yerr=np.median(spectrum_var_summed_1, axis=0),
+        new_ax.errorbar(obsconfig.out_energies[0], y=np.median(spectrum_summed_1, axis=0), yerr=np.median(spectrum_var_summed_1, axis=0),
                         fmt="none", ecolor='red', capsize=2, capthick=3, alpha=0.1, label='error_1')
-        new_ax.step(self.instrument.out_energies[0], np.median(spectrum_summed_1, axis=0), color='black', label=f"sum powerlaw {key[0]}")
+        new_ax.step(obsconfig.out_energies[0], np.median(spectrum_summed_1, axis=0), color='black', label=f"sum powerlaw {key[0]}")
         new_ax.set_title("Spectrum Summed with var sources error")
         new_ax.legend(loc='upper right')
         
-        new_ax.errorbar(self.instrument.out_energies[0], y=np.median(spectrum_summed_2, axis=0), yerr=np.median(spectrum_var_summed_2, axis=0),
+        new_ax.errorbar(obsconfig.out_energies[0], y=np.median(spectrum_summed_2, axis=0), yerr=np.median(spectrum_var_summed_2, axis=0),
                         fmt="none", ecolor='darkorange', capsize=2, capthick=3, alpha=0.1, label='error_2')
-        new_ax.step(self.instrument.out_energies[0], np.median(spectrum_summed_2, axis=0), color='navy', label=f"sum powerlaw {key[1]}")
+        new_ax.step(obsconfig.out_energies[0], np.median(spectrum_summed_2, axis=0), color='navy', label=f"sum powerlaw {key[1]}")
         new_ax.set_title("Spectrum Summed with var sources error")
         new_ax.legend(loc='upper right')
         
@@ -1819,14 +1866,14 @@ class CompareCatalog:
         y_lower_2 = np.median(spectrum_summed_2, axis=0) - np.median(spectrum_var_summed_2, axis=0)
         
         data_1 = {
-            "Energy": self.instrument.out_energies[0],
+            "Energy": obsconfig.out_energies[0],
             "Counts": np.median(spectrum_summed_1, axis=0),
             "Upper limit": y_upper_1,
             "Lower limit": y_lower_1
         }
         
         data_2 = {
-            "Energy": self.instrument.out_energies[0],
+            "Energy": obsconfig.out_energies[0],
             "Counts": np.median(spectrum_summed_2, axis=0),
             "Upper limit": y_upper_2,
             "Lower limit": y_lower_2
