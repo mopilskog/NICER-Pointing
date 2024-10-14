@@ -390,6 +390,10 @@ def write_fits_file(nearby_sources_table, simulation_data) -> None:
 
         if key =="eRASS1":
             cat_name = "eRASS_IAUNAME"
+        
+        if key =="XMM":
+            cat_name = "IAUNAME"
+            
         max_len = max(len(str(name)) for name in nearby_sources_table[cat_name])
         nearby_sources_table[cat_name] = np.array([str(name).ljust(max_len) for name in nearby_sources_table[cat_name]])
 
