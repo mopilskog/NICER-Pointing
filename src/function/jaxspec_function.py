@@ -103,7 +103,8 @@ def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_i
     print(f"\n{colored('Modeling spectra...', 'yellow', attrs=['underline'])}")
     total_spectra = []
     total_var_spectra = []
-    size = 10_000
+    size = 100
+
     
     for index, vignet_factor in tqdm(enumerate(nearby_sources_table["vignetting_factor"])):
         parameters = {}
