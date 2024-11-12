@@ -171,15 +171,19 @@ class XmmCatalog:
         
         test_dr11_path = os.path.join(simulation_data["os_dictionary"]["catalog_datapath"], "4XMM_DR11cat_v1.0.fits").replace("\\", "/")
         test_x2a_path = os.path.join(simulation_data["os_dictionary"]["catalog_datapath"], "xmm2athena_D6.1_V3.fits").replace("\\", "/")
+        test_nh_path = os.path.join(simulation_data["os_dictionary"]["catalog_datapath"], "NHI_HPX.fits").replace("\\", "/")
         xmm_dr11_path = i_f.get_valid_file_path(test_dr11_path)
         x2a_path = i_f.get_valid_file_path(test_x2a_path)
-        
+        nh_path = i_f.get_valid_file_path(test_nh_path)
+
         self.xmm_dr11_catalog = self.open_catalog(catalog_path=xmm_dr11_path)
         self.x2a_catalog = self.open_catalog(catalog_path=x2a_path)
+        self.nh_dictionnary = self.open_catalog(catalog_path=nh_path)
         self.nearby_sources_table, self.index_table = self.get_phoindex_nh()
         self.variability_table = self.variability_table(object_data=simulation_data["object_data"])
         self.neighbourhood_of_object(radius=radius, simulation_data=simulation_data, user_table=user_table)
         self.model_dictionary = self.dictionary_model()
+        
         
     
     def open_catalog(self, catalog_path: str) -> Table:
@@ -290,7 +294,7 @@ class XmmCatalog:
             print(f"An error occured : {error}")
             
        
-    def optim_index(self, number: int) -> Tuple[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray], Tuple[float, float]]:
+    def optim_index(self, number: int) -> Tuple[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray], Tuple[float, float],Tuple[float]]:
         """
         Optimizes the photon index for a specific source in the catalog using an absorbed power law model.
 
@@ -343,14 +347,18 @@ class XmmCatalog:
         try:
             popt, pcov = curve_fit(absorbed_power_law, energy_band, y_array, sigma=yerr_array)
             constant, absorb_pho_index = popt
+            perr = np.sqrt(np.diag(pcov))
+            #perr will have 2 values one associated with the const and another with the absorb_pho_index
+
         except Exception as error:
             constant = 1e-14
             absorb_pho_index = 1.7
             popt = constant, absorb_pho_index
+            perr = 0.0
 
         optimization_parameters = (energy_band, y_array, yerr_array, absorbed_power_law(energy_band, *popt))
         
-        return optimization_parameters, absorb_pho_index
+        return optimization_parameters, absorb_pho_index, perr[1]
 
 
     def visualization_interp(self, optimization_parameters, photon_index) -> None:
@@ -454,21 +462,57 @@ class XmmCatalog:
         index_table = Table(names=column_names,
                             data=column_data)
         
-        column_nh, column_phoindex = np.array([], dtype=float), np.array([], dtype=float)
+        #column_nh, column_phoindex = np.array([], dtype=float), np.array([], dtype=float)
+        #pho_index_min_med, pho_index_max_med = np.array([], dtype=float), np.array([], dtype=float)
+        column_nh = np.array([], dtype=float)
+        column_nh_min = np.array([], dtype=float)
+        column_nh_max = np.array([], dtype=float)
+
+        column_phoindex, pho_index_min_med, pho_index_max_med = [], [], []
         optimization_parameters, photon_index = [], []
-        
+
         for number in range(len(name_list)):
             if index_table["Index in x2a"][number] != "No data found":
+
                 nh_value = self.x2a_catalog["logNH_med"][number]
+                nh_value_min = self.x2a_catalog["logNH_med_min"][number]
+                nh_value_max = self.x2a_catalog["logNH_med_max"][number]
+
                 column_nh = np.append(column_nh, np.exp(nh_value * np.log(10)))
+                column_nh_min = np.append(column_nh_min, np.exp(nh_value_min * np.log(10)))
+                column_nh_max = np.append(column_nh_max, np.exp(nh_value_max * np.log(10)))
+
                 column_phoindex = np.append(column_phoindex, self.x2a_catalog['PhoIndex_med'][number])
+
+                pho_index_min_med = np.append(pho_index_min_med, self.x2a_catalog['PhoIndex_med_min'][number])
+                pho_index_max_med = np.append(pho_index_max_med, self.x2a_catalog['PhoIndex_med_max'][number])
+                
+                
             else:
-                column_nh = np.append(column_nh, 3e20)
-                parameters, pho_value = self.optim_index(number)
+                
+                ra_val = self.nearby_sources_table[self.ra][number]
+                dec_val = self.nearby_sources_table[self.dec][number]
+                
+                distances = np.sqrt((self.nh_dictionnary['RA2000'] - ra_val)**2 + (self.nh_dictionnary["DEC2000"] - dec_val)**2)
+                best_match_index = np.argmin(distances)
+
+                nhi_value = self.nh_dictionnary['NHI'][best_match_index]
+                column_nh = np.append(column_nh, nhi_value)
+                column_nh_min = np.append(column_nh_min, nhi_value)
+                column_nh_max = np.append(column_nh_max, nhi_value)
+
+                parameters, pho_value, perr = self.optim_index(number)
                 optimization_parameters.append(parameters)
+
+                pho_value_min = pho_value - perr
+                pho_value_max = pho_value + perr
+
                 photon_index.append(pho_value)
                 column_phoindex = np.append(column_phoindex, pho_value)
-
+                
+                pho_index_max_med = np.append(pho_index_max_med, pho_value_max) 
+                pho_index_min_med = np.append(pho_index_min_med, pho_value_min) 
+        
         index_add_source = []
         if len(name_list) != len(self.nearby_sources_table):
             for name in self.nearby_sources_table["IAUNAME"]:
@@ -477,16 +521,32 @@ class XmmCatalog:
                     index_add_source.append(index_name)
                     
         for index in index_add_source:
-            column_nh = np.append(column_nh, 3e20)
-            parameters, pho_value = self.optim_index(index)
+
+            ra_val = self.nearby_sources_table[self.ra][number]
+            dec_val = self.nearby_sources_table[self.dec][number]
+            
+            distances = np.sqrt((self.nh_dictionnary['RA2000'] - ra_val)**2 + (self.nh_dictionnary["DEC2000"] - dec_val)**2)
+            best_match_index = np.argmin(distances)
+
+            nhi_value = self.nh_dictionnary['NHI'][best_match_index]
+            column_nh = np.append(column_nh, nhi_value)
+            column_nh_min = np.append(column_nh_min, nhi_value)
+            column_nh_max = np.append(column_nh_max, nhi_value)
+
+            parameters, pho_value, perr = self.optim_index(index)
             optimization_parameters.append(parameters)
-            photon_index.append(pho_value)
+
+            pho_value_min = pho_value - perr
+            pho_value_max = pho_value + perr
+
+            pho_index_min_med = np.append(pho_index_min_med, pho_value_min) 
+            pho_index_max_med = np.append(pho_index_max_med, pho_value_max) 
             column_phoindex = np.append(column_phoindex, pho_value)
 
         self.visualization_interp(optimization_parameters=optimization_parameters, photon_index=photon_index)
         
-        col_names = ["Photon Index", "Nh"]
-        col_data = [column_phoindex, column_nh]
+        col_names = ["Photon Index", "Photon Index min error", "Photon Index max error", "Nh", "Nh min value", "Nh max value"]
+        col_data = [column_phoindex, pho_index_min_med, pho_index_max_med, column_nh, column_nh_min, column_nh_max]
         
         for name, data in zip(col_names, col_data):
             self.nearby_sources_table[name] = data
