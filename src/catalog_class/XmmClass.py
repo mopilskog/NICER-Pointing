@@ -13,6 +13,7 @@ from tqdm import tqdm
 from astroquery.esasky import ESASky
 from astropy.visualization import PercentileInterval, ImageNormalize, LinearStretch
 from astropy.wcs import WCS
+import csv
 
 # ---------- import function ---------- #
 
@@ -347,6 +348,7 @@ class XmmCatalog:
         try:
             popt, pcov = curve_fit(absorbed_power_law, energy_band, y_array, sigma=yerr_array)
             constant, absorb_pho_index = popt
+            print(f" (Source: Curve fit) - "f"pho_index: {absorb_pho_index}")
             perr = np.sqrt(np.diag(pcov))
             #perr will have 2 values one associated with the const and another with the absorb_pho_index
 
@@ -355,6 +357,7 @@ class XmmCatalog:
             absorb_pho_index = 1.7
             popt = constant, absorb_pho_index
             perr = 0.0
+            print(f" (Source: constant) - "f"pho_index: {absorb_pho_index}")
 
         optimization_parameters = (energy_band, y_array, yerr_array, absorbed_power_law(energy_band, *popt))
         
@@ -405,7 +408,6 @@ class XmmCatalog:
         axes.loglog()
         
         plt.show()
-            
 
     def get_phoindex_nh(self) -> Tuple[Table, Table]:
         """
@@ -433,7 +435,7 @@ class XmmCatalog:
             - The method assumes specific keys and structures in the xmm_dr11 and x2a catalogs for data extraction.
             - It prints messages to the console regarding missing data in the xmm_dr11 catalog and visualizes the interpolation results.
         """
-
+        
         name_list = [self.nearby_sources_table["IAUNAME"][number] for number in range(len(self.nearby_sources_table)) if self.nearby_sources_table["SRCID"][number] != 0]
         
         xmm_dr_11_table = Table(names=self.xmm_dr11_catalog.colnames,
@@ -472,6 +474,10 @@ class XmmCatalog:
         optimization_parameters, photon_index = [], []
 
         for number in range(len(name_list)):
+            print("---------------------------------------------------------")
+            print(f"NAME : {name_list[number]}")
+            #i = 0
+            #if i == 1:
             if index_table["Index in x2a"][number] != "No data found":
 
                 nh_value = self.x2a_catalog["logNH_med"][number]
@@ -482,12 +488,25 @@ class XmmCatalog:
                 column_nh_min = np.append(column_nh_min, np.exp(nh_value_min * np.log(10)))
                 column_nh_max = np.append(column_nh_max, np.exp(nh_value_max * np.log(10)))
 
+                transformed_nh_value = np.exp(nh_value * np.log(10))
+                transformed_nh_min = np.exp(nh_value_min * np.log(10))
+                transformed_nh_max = np.exp(nh_value_max * np.log(10))
+                print(f"Nh values(Source: Xmm2Athena catalog) - Nh: {transformed_nh_value}, "
+                    f"Nh min: {transformed_nh_min}, Nh max: {transformed_nh_max}")
+                
                 column_phoindex = np.append(column_phoindex, self.x2a_catalog['PhoIndex_med'][number])
-
                 pho_index_min_med = np.append(pho_index_min_med, self.x2a_catalog['PhoIndex_med_min'][number])
                 pho_index_max_med = np.append(pho_index_max_med, self.x2a_catalog['PhoIndex_med_max'][number])
                 
-                
+                # Retrieve the photon index values for printing
+                pho_index = self.x2a_catalog['PhoIndex_med'][number]
+                pho_index_min = self.x2a_catalog['PhoIndex_med_min'][number]
+                pho_index_max = self.x2a_catalog['PhoIndex_med_max'][number]
+
+                # Print the photon index values
+                print(f"Photon Index values (Source: Xmm2Athena catalog) - "
+                    f"pho_index: {pho_index}, pho_index min: {pho_index_min}, pho_index max: {pho_index_max}")
+                                
             else:
                 
                 ra_val = self.nearby_sources_table[self.ra][number]
@@ -500,7 +519,10 @@ class XmmCatalog:
                 column_nh = np.append(column_nh, nhi_value)
                 column_nh_min = np.append(column_nh_min, nhi_value)
                 column_nh_max = np.append(column_nh_max, nhi_value)
-
+                
+                print(f"Nh values(Source: Nh sky map) - Nh: {nhi_value}, "
+                    f"Nh min: {nhi_value}, Nh max: {nhi_value}")
+                
                 parameters, pho_value, perr = self.optim_index(number)
                 optimization_parameters.append(parameters)
 
@@ -509,10 +531,12 @@ class XmmCatalog:
 
                 photon_index.append(pho_value)
                 column_phoindex = np.append(column_phoindex, pho_value)
-                
                 pho_index_max_med = np.append(pho_index_max_med, pho_value_max) 
                 pho_index_min_med = np.append(pho_index_min_med, pho_value_min) 
-        
+
+                print(f"Photon Index values (Source: Optimized value) - "
+                    f"pho_index: {pho_value}, pho_index min: {pho_value_min}, pho_index max: {pho_value_max}")
+                  
         index_add_source = []
         if len(name_list) != len(self.nearby_sources_table):
             for name in self.nearby_sources_table["IAUNAME"]:
@@ -532,7 +556,9 @@ class XmmCatalog:
             column_nh = np.append(column_nh, nhi_value)
             column_nh_min = np.append(column_nh_min, nhi_value)
             column_nh_max = np.append(column_nh_max, nhi_value)
-
+            print(f"Nh values(Source: Nh sky map) - Nh: {nhi_value}, "
+                    f"Nh min: {nhi_value}, Nh max: {nhi_value}")
+                
             parameters, pho_value, perr = self.optim_index(index)
             optimization_parameters.append(parameters)
 
@@ -542,15 +568,17 @@ class XmmCatalog:
             pho_index_min_med = np.append(pho_index_min_med, pho_value_min) 
             pho_index_max_med = np.append(pho_index_max_med, pho_value_max) 
             column_phoindex = np.append(column_phoindex, pho_value)
-
+            print(f"Photon Index values (Source: Optimized value) - "
+                    f"pho_index: {pho_value}, pho_index min: {pho_value_min}, pho_index max: {pho_value_max}")
+                  
         self.visualization_interp(optimization_parameters=optimization_parameters, photon_index=photon_index)
         
         col_names = ["Photon Index", "Photon Index min error", "Photon Index max error", "Nh", "Nh min value", "Nh max value"]
         col_data = [column_phoindex, pho_index_min_med, pho_index_max_med, column_nh, column_nh_min, column_nh_max]
-        
+
         for name, data in zip(col_names, col_data):
             self.nearby_sources_table[name] = data
-        
+
         return self.nearby_sources_table, index_table
     
     

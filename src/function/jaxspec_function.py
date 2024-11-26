@@ -2,6 +2,7 @@
         # Python's packages
         
 from astropy.io import fits
+from astropy import units as u
 from astropy.table import Table
 from termcolor import colored
 from typing import Dict
@@ -12,6 +13,7 @@ from typing import List
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import jax.numpy as jnp
 
 # ------------------------------ #
 
@@ -99,12 +101,10 @@ def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_i
         - Spectra are generated using the 'fakeit_for_multiple_parameters' function, based on the model and instrument.
         - The function is tailored for astrophysical spectral analysis and may require specific data formats.
     """
-    
     print(f"\n{colored('Modeling spectra...', 'yellow', attrs=['underline'])}")
     total_spectra = []
     total_var_spectra = []
-    size = 100
-
+    size = 1000
     
     for index, vignet_factor in tqdm(enumerate(nearby_sources_table["vignetting_factor"])):
         parameters = {}
@@ -112,10 +112,10 @@ def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_i
             "tbabs_1": {"N_H": np.full(size, nearby_sources_table["Nh"][index]/1e22)},
             "powerlaw_1": {
                 "alpha": np.full(size, nearby_sources_table["Photon Index"][index] if nearby_sources_table["Photon Index"][index] > 0.0 else 1.7),
-                "norm": np.full(size, 1e-5),
+                "norm": np.full(size, 0.00132997),
             }
         }
-        
+
         spectra = fakeit_for_multiple_parameters(instrument=obsconfig, model=model, parameters=parameters) * vignet_factor
 
         if index in var_index:
@@ -207,6 +207,11 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
             np.median(spectrum_summed, axis=0),
             where='post', color='black'
             )
+    test_path = "/Users/mariepilskog/Desktop/Master"
+    x_path = test_path + "/x_x2a.npy" 
+    y_path = test_path + "/y_x2a.npy"
+    np.save(x_path, obsconfig.out_energies[0])
+    np.save(y_path, np.median(spectrum_summed, axis=0))
 
     ax1.set_title("Sum of spectra")
 

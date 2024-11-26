@@ -647,7 +647,7 @@ def main():
         os_dictionary = {"active_workflow": active_workflow,
                         "catalog_datapath": catalog_datapath,
                         "modeling_file_path": modeling_file_path,
-                        "plot_var_sources_path": plot_var_sources_path,
+                        "_var_sources_path": plot_var_sources_path,
                         "catalog_directory" : xmm_directory,
                         "cloesest_dataset_path": xmm_closest_catalog,
                         "img": xmm_img,
@@ -655,7 +655,8 @@ def main():
                         "topcat_software_path": topcat_software_path}
         
         simulation_data["os_dictionary"] = os_dictionary
-        
+        simulation_data["os_dictionary"]["plot_var_sources_path"] =plot_var_sources_path
+    
         # call XmmCatalog Class to make modeling
         xmm = XmmCatalog(catalog_path=catalog_path, radius=radius, simulation_data=simulation_data, user_table=add_source_table)
         nearby_sources_table, nearby_sources_position = xmm.nearby_sources_table,  xmm.nearby_sources_position
