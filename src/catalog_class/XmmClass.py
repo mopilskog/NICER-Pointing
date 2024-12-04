@@ -476,9 +476,9 @@ class XmmCatalog:
         for number in range(len(name_list)):
             print("---------------------------------------------------------")
             print(f"NAME : {name_list[number]}")
-            #i = 0
-            #if i == 1:
-            if index_table["Index in x2a"][number] != "No data found":
+            i = 0
+            if i == 1:
+            #if index_table["Index in x2a"][number] != "No data found":
 
                 nh_value = self.x2a_catalog["logNH_med"][number]
                 nh_value_min = self.x2a_catalog["logNH_med_min"][number]

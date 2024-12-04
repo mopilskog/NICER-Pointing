@@ -75,6 +75,41 @@ def cross_catalog_index(output_name: str, key: str, iauname: str, nearby_sources
             
     return var_index_in_nearby_sources_table
 
+def norm_estimation (nearby_sources_table: Table, model, index):
+    norm = 1e-5
+    param = {
+            "tbabs_1": {"N_H": nearby_sources_table["Nh"][index]/1e22},
+            "powerlaw_1": {
+                "alpha": nearby_sources_table["Photon Index"][index] if nearby_sources_table["Photon Index"][index] > 0.0 else 1.7,
+                "norm": norm,
+            }
+        }
+    Total_flux = nearby_sources_table["SC_EP_8_FLUX"][index]
+    target_flux = Total_flux * (u.erg / u.cm**2 / u.s)
+
+    tolerance = 1e-15 * u.erg / (u.cm**2 * u.s)  # in erg/cm²/s
+    max_iterations = 10000  # Maximum number of iterations to avoid infinite loop
+    learning_rate = 1.0e7 * (u.cm**2 * u.s) / u.erg  # in (cm² s) / erg
+    energies = jnp.geomspace(0.3, 10, 100)
+    
+    for iteration in range(max_iterations):
+        energy_flux = model.energy_flux(param, energies[:-1], energies[1:], n_points=100) * (u.keV/ ( u.s * u.cm**2))
+        total_computed_flux = np.sum(energy_flux)  # Sum across the energy bands
+        total_computed_flux = total_computed_flux.to(u.erg / u.cm**2/ u.s)  # Sum across the energy bands
+
+        # Calculate the difference between computed flux and target flux
+        flux_difference = target_flux - total_computed_flux
+
+        # Check if the computed flux is close enough to the target flux
+        if np.abs(flux_difference) < tolerance:
+            print(f"Matching flux found with norm: {param['powerlaw_1']['norm']} at iteration {iteration}")
+            break
+        #learning_rate = 1.0e9 * (flux_difference / target_flux).value * (u.cm**2 * u.s) / u.erg
+        norm = norm + flux_difference * learning_rate
+        param['powerlaw_1']['norm'] = norm
+    source = nearby_sources_table["IAUNAME"][index]
+    print(f" Source {source} has a norm of {norm}")
+    return norm
 
 def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_index) -> List:
     """
@@ -108,14 +143,14 @@ def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_i
     
     for index, vignet_factor in tqdm(enumerate(nearby_sources_table["vignetting_factor"])):
         parameters = {}
+        norm = norm_estimation(nearby_sources_table, model=model, index=index)
         parameters = {
             "tbabs_1": {"N_H": np.full(size, nearby_sources_table["Nh"][index]/1e22)},
             "powerlaw_1": {
                 "alpha": np.full(size, nearby_sources_table["Photon Index"][index] if nearby_sources_table["Photon Index"][index] > 0.0 else 1.7),
-                "norm": np.full(size, 0.00132997),
+                "norm": np.full(size, norm),
             }
         }
-
         spectra = fakeit_for_multiple_parameters(instrument=obsconfig, model=model, parameters=parameters) * vignet_factor
 
         if index in var_index:
