@@ -473,6 +473,13 @@ class XmmCatalog:
         column_phoindex, pho_index_min_med, pho_index_max_med = [], [], []
         optimization_parameters, photon_index = [], []
 
+        stars_data = {
+            "4XMM J212424.6-335830": {"nh": 0.0426254e22, "photon_index": 2.32914, "norm": 1.2782e-05},
+            "4XMM J212426.9-335629": {"nh": 0.0506784e22, "photon_index": 2.35869, "norm": 7.90781e-06},
+            "4XMM J212431.3-340240": {"nh": 0.00986219e22, "photon_index": 1.73761, "norm": 4.06242e-06},
+            "4XMM J212438.7-335401": {"nh": 0.245439e22, "photon_index": 1.88856, "norm": 2.86006e-06},
+        }
+
         for number in range(len(name_list)):
             print("---------------------------------------------------------")
             print(f"NAME : {name_list[number]}")

@@ -221,10 +221,18 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
         ax.loglog()
 
     ax0 = axes[0]
-    for spectra in total_spectra:
+    data_to_save = {}
+    for i, spectra in enumerate(total_spectra):
+    #for spectra in total_spectra:
         ax0.step(obsconfig.out_energies[0],
                 np.median(spectra, axis=0),
                 where="post")
+        x_values = obsconfig.out_energies[0]
+        y_values = np.median(spectra, axis=0)
+
+        data_to_save[f"x_{i}"] = x_values
+        data_to_save[f"y_{i}"] = y_values
+
     ax0.set_title("Spectra from Nearby Sources")
 
     spectrum_summed = 0.0
@@ -242,11 +250,13 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
             np.median(spectrum_summed, axis=0),
             where='post', color='black'
             )
+    data_to_save["x_sum"] = obsconfig.out_energies[0]
+    data_to_save["y_sum"] = np.median(spectrum_summed, axis=0)
+
     test_path = "/Users/mariepilskog/Desktop/Master"
-    x_path = test_path + "/x_x2a.npy" 
-    y_path = test_path + "/y_x2a.npy"
-    np.save(x_path, obsconfig.out_energies[0])
-    np.save(y_path, np.median(spectrum_summed, axis=0))
+    path = test_path + "/xmmirap.npz" 
+    np.savez(path, **data_to_save)
+    print(f"Data successfully saved to {path}")
 
     ax1.set_title("Sum of spectra")
 
