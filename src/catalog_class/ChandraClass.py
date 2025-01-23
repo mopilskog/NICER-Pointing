@@ -624,7 +624,7 @@ class ChandraCatalog:
     
         except Exception as error:
             # Default values if curve fitting fails
-            constant = 1.0  # Reasonable default for constant
+            constant = 1e-14  # Reasonable default for constant
             photon_index = 1.7  # Default for photon index
             popt = [constant, photon_index]  # Use these defaults for popt
     
@@ -679,23 +679,26 @@ class ChandraCatalog:
         self.visualization_interp(optimization_parameters=cs_parameters_list, photon_index=cs_photon_index_list, key=cs_key)
 
         self.nearby_sources_table["Chandra_IAUNAME"] = [n.strip() for n in self.nearby_sources_table["Chandra_IAUNAME"]]
-        for index, name in enumerate(list(self.cone_search_catalog['name'])): 
+        #for index, name in enumerate(list(self.cone_search_catalog['name'])): 
+        for index, name in enumerate(list(self.nearby_sources_table["Chandra_IAUNAME"])):
             name = name.strip()  # Remove leading/trailing spaces
 
             if name in self.nearby_sources_table["Chandra_IAUNAME"]:
                 nearby_index = list(self.nearby_sources_table["Chandra_IAUNAME"]).index(name)
-                if self.cone_search_catalog["powlaw_gamma"][index] != 0.0:
-                    photon_index_list.append(self.cone_search_catalog["powlaw_gamma"][index])
-                else:
-                    photon , params = self.optim_index(key=key, table=self.nearby_sources_table, index=nearby_index)
-                    photon = photon if photon > 0.0 else 1.7
-                    parameters_list.append(params)
-                    photon_index_list.append(photon)
+                #if self.cone_search_catalog["powlaw_gamma"][index] != 0.0:
+                    #photon_index_list.append(self.cone_search_catalog["powlaw_gamma"][index])
+                
+                #else:
+                photon , params = self.optim_index(key=key, table=self.nearby_sources_table, index=nearby_index)
+                photon = photon if photon > 0.0 else 1.7
+                parameters_list.append(params)
+                photon_index_list.append(photon)
                     
-                if self.cone_search_catalog["nh_gal"][index] != 0.0:
-                    self.nh_list.append(self.cone_search_catalog["nh_gal"][index]*1e20)
-                else:
-                    self.nh_list.append(3e20)
+                #if self.cone_search_catalog["nh_gal"][index] != 0.0:
+
+                #self.nh_list.append(self.cone_search_catalog["nh_gal"][index]*1e20)
+                #else:
+                self.nh_list.append(3e20)
         
         self.visualization_interp(optimization_parameters=parameters_list, photon_index=photon_index_list, key=key)
         self.nearby_sources_table["Photon Index"] = photon_index_list

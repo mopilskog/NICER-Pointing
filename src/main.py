@@ -1016,7 +1016,7 @@ def main():
     #obsconfig = ObsConfiguration.from_instrument(instrument, observation)
     
     # load all of the sources spetcra
-    total_spectra, total_var_spectra = j_f.modeling_source_spectra(nearby_sources_table=nearby_sources_table, obsconfig=obsconfig, model=model, var_index=var_index)
+    total_spectra, total_var_spectra = j_f.modeling_source_spectra(nearby_sources_table=nearby_sources_table, obsconfig=obsconfig, model=model, var_index=var_index, key=key)
     #total_spectra, total_var_spectra = j_f.modeling_source_spectra(nearby_sources_table=nearby_sources_table, instrument=instrument, model=model, var_index=var_index)
     
     # plot of all spectra data

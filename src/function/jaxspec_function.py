@@ -75,7 +75,7 @@ def cross_catalog_index(output_name: str, key: str, iauname: str, nearby_sources
             
     return var_index_in_nearby_sources_table
 
-def norm_estimation (nearby_sources_table: Table, model, index):
+def norm_estimation (nearby_sources_table: Table, model, index, key):
     norm = 1e-5
     param = {
             "tbabs_1": {"N_H": nearby_sources_table["Nh"][index]/1e22},
@@ -84,7 +84,16 @@ def norm_estimation (nearby_sources_table: Table, model, index):
                 "norm": norm,
             }
         }
-    Total_flux = nearby_sources_table["SC_EP_8_FLUX"][index]
+    if key == "Chandra":
+        Total_flux = nearby_sources_table["flux_aper_b"][index]
+        iauname = "Chandra_IAUNAME"
+    elif key =="XMM":
+        Total_flux = nearby_sources_table["SC_EP_8_FLUX"][index]
+        iauname = "IAUNAME"
+    elif key == "eRASS1":
+        Total_flux = nearby_sources_table["ML_FLUX_1"][index]
+        iauname = "eRASS_IAUNAME"
+
     target_flux = Total_flux * (u.erg / u.cm**2 / u.s)
 
     tolerance = 1e-15 * u.erg / (u.cm**2 * u.s)  # in erg/cm²/s
@@ -107,11 +116,11 @@ def norm_estimation (nearby_sources_table: Table, model, index):
         #learning_rate = 1.0e9 * (flux_difference / target_flux).value * (u.cm**2 * u.s) / u.erg
         norm = norm + flux_difference * learning_rate
         param['powerlaw_1']['norm'] = norm
-    source = nearby_sources_table["IAUNAME"][index]
+    source = nearby_sources_table[iauname][index]
     print(f" Source {source} has a norm of {norm}")
     return norm
 
-def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_index) -> List:
+def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_index, key) -> List:
     """
     Generates model spectra for astronomical sources using specified instrument and model parameters.
 
@@ -143,7 +152,7 @@ def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_i
     
     for index, vignet_factor in tqdm(enumerate(nearby_sources_table["vignetting_factor"])):
         parameters = {}
-        norm = norm_estimation(nearby_sources_table, model=model, index=index)
+        norm = norm_estimation(nearby_sources_table, model=model, index=index, key=key)
         parameters = {
             "tbabs_1": {"N_H": np.full(size, nearby_sources_table["Nh"][index]/1e22)},
             "powerlaw_1": {
