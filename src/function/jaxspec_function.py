@@ -93,6 +93,12 @@ def norm_estimation (nearby_sources_table: Table, model, index, key):
     elif key == "eRASS1":
         Total_flux = nearby_sources_table["ML_FLUX_1"][index]
         iauname = "eRASS_IAUNAME"
+    elif key == "CS_Chandra":
+        Total_flux = nearby_sources_table["flux_aper_b"][index]
+        iauname = "Chandra_IAUNAME"
+    elif key == "Swift":
+        Total_flux = nearby_sources_table["Flux"][index]
+        iauname = "Swift_IAUNAME"
 
     target_flux = Total_flux * (u.erg / u.cm**2 / u.s)
 
@@ -111,14 +117,14 @@ def norm_estimation (nearby_sources_table: Table, model, index, key):
 
         # Check if the computed flux is close enough to the target flux
         if np.abs(flux_difference) < tolerance:
-            print(f"Matching flux found with norm: {param['powerlaw_1']['norm']} at iteration {iteration}")
+            #print(f"Matching flux found with norm: {param['powerlaw_1']['norm']} at iteration {iteration}")
             break
         #learning_rate = 1.0e9 * (flux_difference / target_flux).value * (u.cm**2 * u.s) / u.erg
         norm = norm + flux_difference * learning_rate
         param['powerlaw_1']['norm'] = norm
     source = nearby_sources_table[iauname][index]
-    print(f" Source {source} has a norm of {norm}")
-    return norm
+    print(f"Found norm for {source} : {norm}")
+    return norm, iauname
 
 def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_index, key) -> List:
     """
@@ -152,7 +158,7 @@ def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_i
     
     for index, vignet_factor in tqdm(enumerate(nearby_sources_table["vignetting_factor"])):
         parameters = {}
-        norm = norm_estimation(nearby_sources_table, model=model, index=index, key=key)
+        norm, iauname = norm_estimation(nearby_sources_table, model=model, index=index, key=key)
         parameters = {
             "tbabs_1": {"N_H": np.full(size, nearby_sources_table["Nh"][index]/1e22)},
             "powerlaw_1": {
@@ -160,6 +166,7 @@ def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_i
                 "norm": np.full(size, norm),
             }
         }
+        
         spectra = fakeit_for_multiple_parameters(instrument=obsconfig, model=model, parameters=parameters) * vignet_factor
 
         if index in var_index:

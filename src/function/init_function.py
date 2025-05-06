@@ -260,7 +260,7 @@ def define_sources_list() -> Table:
     return UserList
 
 
-def add_source_list(active_workflow) -> Table:
+def add_source_list(active_workflow,  interactive = False) -> Table:
     """
     Prompt the user to add sources to a calculation and load a FITS file as a source list.
 
@@ -278,6 +278,9 @@ def add_source_list(active_workflow) -> Table:
         as an astropy Table object. The function ensures the file path is valid and handles any file-reading 
         errors. If the user decides not to add sources, the function returns an empty Table object.
     """
+    if not interactive:
+        print("Interactive mode is disabled. Skipping additional source input.")
+        return Table()
     
     print(f"You can add a {colored('.fits', 'blue')} file to your modeling ! ")
     while True:

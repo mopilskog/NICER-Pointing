@@ -15,9 +15,9 @@ from tqdm import tqdm
 
 import function.unique_function as u_f
 import function.calculation_function as c_f
-
+import function.init_function as i_f
 # ------------------------------------- #
-
+import os
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
@@ -130,13 +130,17 @@ class eRASS1Catalog:
         self.ra = dict_cat.dictionary_coord["eRASS1"]["right_ascension"]
         self.dec = dict_cat.dictionary_coord["eRASS1"]["declination"]
         # --------------------------- #
-
         self.eRo_catalog = self.open_catalog(catalog_path)
         self.nearby_sources_table, self.nearby_sources_position = self.find_nearby_sources(radius=radius, simulation_data=simulation_data)
         
         self.neighbourhood_of_object(radius=radius, simulation_data=simulation_data)
+        test_nh_path = os.path.join(simulation_data["os_dictionary"]["catalog_datapath"], "NHI_HPX.fits").replace("\\", "/")
+        nh_path = i_f.get_valid_file_path(test_nh_path)
+        self.nh_dictionnary = self.open_catalog(catalog_path=nh_path)
+
         self.photon_index = self.get_phoindex_nh()
         self.model_dictionary = self.dictionary_model()
+
         
         
     def open_catalog(self, catalog_path: str) -> Table:
@@ -371,13 +375,19 @@ class eRASS1Catalog:
         
         try:
             popt, pcov = curve_fit(absorbed_power_law, interp_data["energy_band_center"], y_array, sigma=yerr_array)
-            constant, photon_index = popt
+            constant, absorb_pho_index = popt
+            perr = np.sqrt(np.diag(pcov))
+            perr = perr[1]
+            
         except Exception as error:
-            popt = (1e-14, 1.7)
+            constant = 1e-14
+            absorb_pho_index = 1.7
+            popt = constant, absorb_pho_index
+            perr = 0.0
             
         optimization_parameters = (interp_data["energy_band_center"], y_array, yerr_array, absorbed_power_law(interp_data["energy_band_center"], *popt))
             
-        return photon_index, optimization_parameters 
+        return absorb_pho_index, perr, optimization_parameters 
 
 
     def get_phoindex_nh(self) -> List[float]:
@@ -399,17 +409,28 @@ class eRASS1Catalog:
         of astronomical sources in the eRASS1 catalog.
         """
         key = "eRASS1"
-        photon_index_list, parameters_list, nh_list = [], [], []
+        photon_index_list, parameters_list, nh_list, perr_list = [], [], [], []
 
         for index in range(len(self.nearby_sources_table)):
-            nh_list.append(3e20)
-            photon, params = self.optim_index(table=self.nearby_sources_table, key=key, index=index)
+           
+            ra_val = self.nearby_sources_table[self.ra][index]
+            dec_val = self.nearby_sources_table[self.dec][index]
+            
+            distances = np.sqrt((self.nh_dictionnary['RA2000'] - ra_val)**2 + (self.nh_dictionnary["DEC2000"] - dec_val)**2)
+            best_match_index = np.argmin(distances)
+
+            nhi_value = self.nh_dictionnary['NHI'][best_match_index]
+            nh_list.append(nhi_value)
+            
+            photon, perr, params = self.optim_index(table=self.nearby_sources_table, key=key, index=index)
             photon_index_list.append(photon if photon > 0.0 else 1.7)
             parameters_list.append(params)
+            perr_list.append(perr)
         
         self.visualization_inter(optimization_parameters=parameters_list, photon_index=photon_index_list, key=key)
         
         self.nearby_sources_table["Photon Index"] = photon_index_list
+        self.nearby_sources_table["Photon Index Error"] = perr_list
         self.nearby_sources_table["Nh"] = nh_list
         
         return photon_index_list

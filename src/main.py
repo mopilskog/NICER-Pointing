@@ -480,6 +480,8 @@ def main():
     parser.add_argument('--catalog', '-ca', type=str, 
                         help="Enter catalog keyword : Xmm_DR13/CSC_2.0/Swift/eRASS1/compare_catalog/match")
 
+    parser.add_argument('--interactive','-in', action='store_true', help="Interactive mode toggles plotting and asks for user input regarding file specifications. By default, the system will not show plots, to allow the user to run the program without having to interact with it at runtime.")
+
     args = parser.parse_args()
 
     psr_name = np.array(["PSR J0437-4715", "PSR J2124-3358", "PSR J0751+1807", "PSR J1231-1411"], dtype=str)
@@ -584,8 +586,8 @@ def main():
     # --------------------------------------------- #
 
     # --------------- User table --------------- #
-
-    add_source_table = i_f.add_source_list(active_workflow=active_workflow)
+    
+    add_source_table = i_f.add_source_list(active_workflow=active_workflow, interactive=args.interactive)
 
     if len(add_source_table) != 0:
         colnames = ['Name', 'Right Ascension', 'Declination', 'Var Value']
@@ -684,6 +686,7 @@ def main():
             os.mkdir(chandra_closest_catalog)
         
         os_dictionary = {"active_workflow": active_workflow,
+                         "catalog_datapath": catalog_datapath,  
                         "modeling_file_path": modeling_file_path,
                         "plot_var_sources_path": plot_var_sources_path,
                         "catalog_directory": chandra_directory,
@@ -741,6 +744,7 @@ def main():
             os.mkdir(swi_closest_catalog)
         
         os_dictionary = {"active_workflow": active_workflow,
+                        "catalog_datapath": catalog_datapath,
                         "modeling_file_path": modeling_file_path,
                         "plot_var_sources_path": plot_var_sources_path,
                         "catalog_directory" : swi_directory,
@@ -778,6 +782,7 @@ def main():
             os.mkdir(eRo_closest_catalog)
             
         os_dictionary = {"active_workflow": active_workflow,
+                         "catalog_datapath": catalog_datapath,
                         "modeling_file_path": modeling_file_path,
                         "plot_var_sources_path": plot_var_sources_path,
                         "catalog_directory" : eRo_directory,
@@ -944,7 +949,7 @@ def main():
 
     # --------------- write fits file --------------- #
 
-    c_f.write_fits_file(nearby_sources_table=nearby_sources_table, simulation_data=simulation_data)
+    c_f.write_fits_file(nearby_sources_table=nearby_sources_table, simulation_data=simulation_data,interactive=args.interactive)
 
     # ----------------------------------------------- #
 

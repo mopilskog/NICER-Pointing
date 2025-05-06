@@ -7,7 +7,7 @@ from astropy import units as u
 from typing import Tuple, Dict, List
 from termcolor import colored
 from scipy.optimize import curve_fit
-
+from scipy.interpolate import interp1d
 import os
 import sys
 import subprocess
@@ -239,7 +239,18 @@ def data_map(simulation_data: Dict, vector_dictionary: Dict, OptimalPointingIdx:
     
     nearby_ra = [NearbySRCposition[item].ra.value for item in range(len(NearbySRCposition))]
     nearby_dec = [NearbySRCposition[item].dec.value for item in range(len(NearbySRCposition))]
-    
+    SMALL_SIZE = 12
+    MEDIUM_SIZE = 15 
+    BIGGER_SIZE = 18
+
+    plt.rc('font', size=MEDIUM_SIZE)          # controls default text sizes
+    plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
+    plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
+    plt.rc('xtick', labelsize=BIGGER_SIZE)    # fontsize of the tick labels
+    plt.rc('ytick', labelsize=BIGGER_SIZE)    # fontsize of the tick labels
+    plt.rc('legend', fontsize=MEDIUM_SIZE)   # legend fontsize
+    plt.rc('figure', titlesize=MEDIUM_SIZE)
+    plt.rcParams['font.family'] = 'DejaVu Sans'
     figure, axes = plt.subplots(1, 1, figsize=(15, 8))
     figure.suptitle(f"S/N map for {object_data['object_name']}\nOptimal pointing point : {ra_opti} deg, {dec_opti} deg")
     
@@ -249,8 +260,8 @@ def data_map(simulation_data: Dict, vector_dictionary: Dict, OptimalPointingIdx:
     axes.scatter(object_data["object_position"].ra, object_data["object_position"].dec, marker='*', color='green', label=f"{object_data['object_name']}")
     axes.scatter(ra_opti, dec_opti, s=50, marker='+', color='red', label="Optimal Pointing Point")
     
-    axes.set_xlabel('Right Ascension [deg]', fontsize='large')
-    axes.set_ylabel('Declination [deg]', fontsize='large')
+    axes.set_xlabel('Right Ascension [deg]')
+    axes.set_ylabel('Declination [deg]')
     axes.legend(loc="upper right", ncol=2)
     cbar = figure.colorbar(sc, ax=axes)
     cbar.set_label('S/N')
@@ -258,7 +269,7 @@ def data_map(simulation_data: Dict, vector_dictionary: Dict, OptimalPointingIdx:
     key = simulation_data["os_dictionary"]["catalog_key"]
     name = object_data["object_name"]
     plt.savefig(os.path.join(os_dictionary['img'], f"{key}_SNR_{name}.png".replace(" ", "_")))
-    plt.show()
+    plt.close()
 
 
 def count_rates(nearby_src_table, model_dictionary, telescop_data) -> Tuple[List[float], Table]:
@@ -359,11 +370,11 @@ def vignetting_factor(OptimalPointingIdx, vector_dictionary, simulation_data, da
           f"with a vignetting factor of : {colored(vignetting_factor_psr2optipoint, 'light_green')}")
     
     nearby_sources_table["vignetting_factor"] = vignetting_factor
-    
+
     return vignetting_factor, nearby_sources_table
 
 
-def write_fits_file(nearby_sources_table, simulation_data) -> None:
+def write_fits_file(nearby_sources_table, simulation_data, interactive=False) -> None:
     """
     Write the nearby sources table to a FITS file and open it with TOPCAT.
 
@@ -401,11 +412,13 @@ def write_fits_file(nearby_sources_table, simulation_data) -> None:
         nearby_sources_table.write(nearby_sources_table_path, format='fits', overwrite=True)
         print(f"Nearby sources table was created in : {colored(nearby_sources_table_path, 'magenta')}")
         
-        topcat_path = os_dictionary["topcat_software_path"]
+        if interactive:
+            topcat_path = os_dictionary["topcat_software_path"]
 
-        command = ['java', '-jar', topcat_path, nearby_sources_table_path]  # Command as a list
-        subprocess.run(command, check=True)  # check=True raises an error if the command fails
-        
+            command = ['java', '-jar', topcat_path, nearby_sources_table_path]  # Command as a list
+            subprocess.run(command, check=True)  # check=True raises an error if the command fails
+            print("Opened FITS file with TOPCAT")
+            
     except Exception as error:
         print(f"{colored('An error occured : ', 'red')} {error}")
     
@@ -494,5 +507,5 @@ def modeling(vignetting_factor: List, simulation_data: Dict, column_dictionary: 
     key = simulation_data["os_dictionary"]["catalog_key"]
     name = object_data['object_name']
     plt.savefig(os.path.join(os_dictionary["img"], f"{key}_modeling_{name}.png".replace(" ", "_")))
-    plt.show()
+    plt.close()
     

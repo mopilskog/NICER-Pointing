@@ -15,6 +15,7 @@ from tqdm import tqdm
 
 import function.unique_function as u_f
 import function.calculation_function as c_f
+import function.init_function as i_f
 
 # ------------------------------------- #
 
@@ -134,6 +135,9 @@ class SwiftCatalog:
         self.nearby_sources_table, self.nearby_sources_position = self.find_nearby_sources(radius=radius, object_data=simulation_data["object_data"])
         
         self.neighbourhood_of_object(radius=radius, simulation_data=simulation_data)
+        test_nh_path = os.path.join(simulation_data["os_dictionary"]["catalog_datapath"], "NHI_HPX.fits").replace("\\", "/")
+        nh_path = i_f.get_valid_file_path(test_nh_path)
+        self.nh_dictionnary = self.open_catalog(catalog_path=nh_path)
         self.photon_index = self.get_phoindex_nh()
         self.model_dictionary = self.dictionary_model()
 
@@ -374,13 +378,18 @@ class SwiftCatalog:
         
         try:
             popt, pcov = curve_fit(absorbed_power_law, interp_data["energy_band_center"], y_array, sigma=yerr_array)
-            constant, photon_index = popt
+            constant, absorb_photon_index = popt
+            perr = np.sqrt(np.diag(pcov))
+            perr = perr[1]
         except Exception as error:
-            popt = (1e-14, 1.7)
+            constant = 1e-14
+            absorb_photon_index = 1.7
+            popt = constant, absorb_photon_index
+            perr = 0.0
             
         optimization_parameters = (interp_data["energy_band_center"], y_array, yerr_array, absorbed_power_law(interp_data["energy_band_center"], *popt))
             
-        return photon_index, optimization_parameters 
+        return absorb_photon_index, perr, optimization_parameters 
 
 
     def get_phoindex_nh(self) -> List[float]:
@@ -405,14 +414,24 @@ class SwiftCatalog:
         photon_index_list, parameters_list, nh_list = [], [], []
 
         for index in range(len(self.nearby_sources_table)):
-            nh_list.append(3e20)
-            photon, params = self.optim_index(table=self.nearby_sources_table, key=key, index=index)
+            #nh_list.append(3e20)
+            ra_val = self.nearby_sources_table[self.ra][index]
+            dec_val = self.nearby_sources_table[self.dec][index]
+            
+            distances = np.sqrt((self.nh_dictionnary['RA2000'] - ra_val)**2 + (self.nh_dictionnary["DEC2000"] - dec_val)**2)
+            best_match_index = np.argmin(distances)
+
+            nhi_value = self.nh_dictionnary['NHI'][best_match_index]
+            nh_list.append(nhi_value)
+
+            photon, perr, params = self.optim_index(table=self.nearby_sources_table, key=key, index=index)
             photon_index_list.append(photon if photon > 0.0 else 1.7)
             parameters_list.append(params)
         
         self.visualization_inter(optimization_parameters=parameters_list, photon_index=photon_index_list, key=key)
         
         self.nearby_sources_table["Photon Index"] = photon_index_list
+        self.nearby_sources_table["Photon Index Error"] = perr
         self.nearby_sources_table["Nh"] = nh_list
         
         return photon_index_list

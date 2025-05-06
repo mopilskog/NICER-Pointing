@@ -350,6 +350,7 @@ class XmmCatalog:
             constant, absorb_pho_index = popt
             print(f" (Source: Curve fit) - "f"pho_index: {absorb_pho_index}")
             perr = np.sqrt(np.diag(pcov))
+            absorb_random = np.random.normal(absorb_pho_index, perr[1])
             #perr will have 2 values one associated with the const and another with the absorb_pho_index
 
         except Exception as error:
@@ -360,7 +361,7 @@ class XmmCatalog:
             print(f" (Source: constant) - "f"pho_index: {absorb_pho_index}")
 
         optimization_parameters = (energy_band, y_array, yerr_array, absorbed_power_law(energy_band, *popt))
-        
+        #return optimization_parameters, absorb_pho_index, perr[1]
         return optimization_parameters, absorb_pho_index, perr[1]
 
 
@@ -407,7 +408,7 @@ class XmmCatalog:
         axes.legend(loc="upper left", ncol=4, fontsize=6)
         axes.loglog()
         
-        plt.show()
+        plt.close()
 
     def get_phoindex_nh(self) -> Tuple[Table, Table]:
         """
@@ -473,12 +474,7 @@ class XmmCatalog:
         column_phoindex, pho_index_min_med, pho_index_max_med = [], [], []
         optimization_parameters, photon_index = [], []
 
-        stars_data = {
-            "4XMM J212424.6-335830": {"nh": 0.0426254e22, "photon_index": 2.32914, "norm": 1.2782e-05},
-            "4XMM J212426.9-335629": {"nh": 0.0506784e22, "photon_index": 2.35869, "norm": 7.90781e-06},
-            "4XMM J212431.3-340240": {"nh": 0.00986219e22, "photon_index": 1.73761, "norm": 4.06242e-06},
-            "4XMM J212438.7-335401": {"nh": 0.245439e22, "photon_index": 1.88856, "norm": 2.86006e-06},
-        }
+    
 
         for number in range(len(name_list)):
             print("---------------------------------------------------------")
@@ -498,8 +494,6 @@ class XmmCatalog:
                 transformed_nh_value = np.exp(nh_value * np.log(10))
                 transformed_nh_min = np.exp(nh_value_min * np.log(10))
                 transformed_nh_max = np.exp(nh_value_max * np.log(10))
-                print(f"Nh values(Source: Xmm2Athena catalog) - Nh: {transformed_nh_value}, "
-                    f"Nh min: {transformed_nh_min}, Nh max: {transformed_nh_max}")
                 
                 column_phoindex = np.append(column_phoindex, self.x2a_catalog['PhoIndex_med'][number])
                 pho_index_min_med = np.append(pho_index_min_med, self.x2a_catalog['PhoIndex_med_min'][number])
@@ -510,10 +504,9 @@ class XmmCatalog:
                 pho_index_min = self.x2a_catalog['PhoIndex_med_min'][number]
                 pho_index_max = self.x2a_catalog['PhoIndex_med_max'][number]
 
-                # Print the photon index values
-                print(f"Photon Index values (Source: Xmm2Athena catalog) - "
-                    f"pho_index: {pho_index}, pho_index min: {pho_index_min}, pho_index max: {pho_index_max}")
-                                
+                
+
+               
             else:
                 
                 ra_val = self.nearby_sources_table[self.ra][number]
@@ -580,9 +573,11 @@ class XmmCatalog:
                   
         self.visualization_interp(optimization_parameters=optimization_parameters, photon_index=photon_index)
         
-        col_names = ["Photon Index", "Photon Index min error", "Photon Index max error", "Nh", "Nh min value", "Nh max value"]
-        col_data = [column_phoindex, pho_index_min_med, pho_index_max_med, column_nh, column_nh_min, column_nh_max]
-
+        #col_names = ["Photon Index", "Photon Index Error", "Nh", "Nh min value", "Nh max value"]
+        #col_data = [column_phoindex, perr,  column_nh, column_nh_min, column_nh_max]
+        col_names = ["Photon Index", "Nh", "Nh min value", "Nh max value"]
+        col_data = [column_phoindex, column_nh, column_nh_min, column_nh_max]
+    
         for name, data in zip(col_names, col_data):
             self.nearby_sources_table[name] = data
 
@@ -777,7 +772,7 @@ class XmmCatalog:
             
         os_dictionary = simulation_data["os_dictionary"]
         plt.savefig(os.path.join(os_dictionary["img"], f"neighbourhood_of_{object_name}.png".replace(" ", "_")))
-        plt.show()
+        plt.close()
         print("\n")
 
 

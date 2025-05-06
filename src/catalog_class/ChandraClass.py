@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 import function.calculation_function as c_f
 import function.unique_function as u_f
-
+import function.init_function as i_f
 # ------------------------------------- #
 
 import os
@@ -178,7 +178,7 @@ class ChandraCatalog:
         self.dec_cs = dict_cat.dictionary_coord["CS_Chandra"]["declination"]
         # --------------------------- #
         
-        
+
         self.chandra_catalog = self.open_catalog(catalog_path=catalog_path)
         self.cone_search_catalog = self.load_cs_catalog(radius=radius, object_data=simulation_data["object_data"])
         self.cs_nearby_sources_position = SkyCoord(ra=list(self.cone_search_catalog[self.ra_cs]), dec=list(self.cone_search_catalog[self.dec_cs]), unit=u.deg)
@@ -186,9 +186,13 @@ class ChandraCatalog:
         self.cone_search_catalog = self.threshold(self.cone_search_catalog)
         
         self.nearby_sources_table, self.nearby_sources_position = self.find_nearby_sources(radius=radius, object_data=simulation_data["object_data"], user_table=user_table)
+        test_nh_path = os.path.join(simulation_data["os_dictionary"]["catalog_datapath"], "NHI_HPX.fits").replace("\\", "/")
+        nh_path = i_f.get_valid_file_path(test_nh_path)
+        self.nh_dictionnary = self.open_catalog(catalog_path=nh_path)
         self.neighbourhood_of_object(radius=radius, simulation_data=simulation_data)
         self.cs_photon_index, self.photon_index = self.get_phoindex_nh()
         self.cs_model_dictionary, self.model_dictionary = self.dictionary_model()
+
         
 
     def open_catalog(self, catalog_path: str) -> Table:
@@ -604,7 +608,7 @@ class ChandraCatalog:
         def absorbed_power_law(energy_band, constant, gamma):
             energy_band = np.array(energy_band, dtype=float)
             sigma = np.array([1e-20, 1e-22, 1e-24], dtype=float)
-            return (constant * energy_band **(-gamma)) * (np.exp(-sigma*3e20))
+            return (constant * energy_band ** (-gamma)) * (np.exp(-sigma * 3e20))
         
         tab_width = 2 * interp_data["energy_band_half_width"]
         
@@ -621,15 +625,18 @@ class ChandraCatalog:
         try:
             popt, pcov = curve_fit(absorbed_power_law, interp_data["energy_band_center"], y_array, sigma=yerr_array)
             constant, photon_index = popt
+            perr = np.sqrt(np.diag(pcov))
+            p_err = perr[1]
+            absorb_random = np.random.normal(photon_index, p_err)
     
         except Exception as error:
             # Default values if curve fitting fails
             constant = 1e-14  # Reasonable default for constant
             photon_index = 1.7  # Default for photon index
             popt = [constant, photon_index]  # Use these defaults for popt
-    
+            p_err = 0.0
         optimization_parameters = (interp_data["energy_band_center"], y_array, yerr_array, absorbed_power_law(interp_data["energy_band_center"], *popt))   
-        return photon_index, optimization_parameters 
+        return photon_index, optimization_parameters , p_err
         
 
     def get_phoindex_nh(self):
@@ -667,7 +674,7 @@ class ChandraCatalog:
             if item != 0:
                 cs_photon_index_list.append(item)
             else:
-                photon, params = self.optim_index(key=cs_key, table=self.cone_search_catalog, index=index)
+                photon, params, perr = self.optim_index(key=cs_key, table=self.cone_search_catalog, index=index)
                 photon = photon if photon > 0.0 else 1.7
                 cs_parameters_list.append(params)
                 cs_photon_index_list.append(photon)
@@ -687,9 +694,9 @@ class ChandraCatalog:
                 nearby_index = list(self.nearby_sources_table["Chandra_IAUNAME"]).index(name)
                 #if self.cone_search_catalog["powlaw_gamma"][index] != 0.0:
                     #photon_index_list.append(self.cone_search_catalog["powlaw_gamma"][index])
-                
+                print(f"Index : {index} - Name : {name}")
                 #else:
-                photon , params = self.optim_index(key=key, table=self.nearby_sources_table, index=nearby_index)
+                photon , params, perr = self.optim_index(key=key, table=self.nearby_sources_table, index=nearby_index)
                 photon = photon if photon > 0.0 else 1.7
                 parameters_list.append(params)
                 photon_index_list.append(photon)
@@ -698,11 +705,22 @@ class ChandraCatalog:
 
                 #self.nh_list.append(self.cone_search_catalog["nh_gal"][index]*1e20)
                 #else:
-                self.nh_list.append(3e20)
-        
+                #self.nh_list.append(3e20)
+                ra_val = self.nearby_sources_table[self.ra][index]
+                dec_val = self.nearby_sources_table[self.dec][index]
+                
+                distances = np.sqrt((self.nh_dictionnary['RA2000'] - ra_val)**2 + (self.nh_dictionnary["DEC2000"] - dec_val)**2)
+                best_match_index = np.argmin(distances)
+
+                nhi_value = self.nh_dictionnary['NHI'][best_match_index]
+                self.nh_list.append(nhi_value)
+                
+
+                
         self.visualization_interp(optimization_parameters=parameters_list, photon_index=photon_index_list, key=key)
         self.nearby_sources_table["Photon Index"] = photon_index_list
         self.nearby_sources_table["Nh"] = self.nh_list
+        self.nearby_sources_table["Photon Index Error"] = perr
         
         self.cone_search_catalog["Photon Index"] = cs_photon_index_list
         self.cone_search_catalog['Nh'] = self.cs_nh_list
