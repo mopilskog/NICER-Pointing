@@ -478,7 +478,7 @@ def main():
                         help="Enter the exposure time to modeling data")
 
     parser.add_argument('--catalog', '-ca', type=str, 
-                        help="Enter catalog keyword : Xmm_DR13/CSC_2.0/Swift/eRASS1/compare_catalog/match")
+                        help="Enter catalog keyword : Xmm_DR13/CSC_2.0/Swift/eRASS1/main/compare_catalog/match")
 
     parser.add_argument('--interactive','-in', action='store_true', help="Interactive mode toggles plotting and asks for user input regarding file specifications. By default, the system will not show plots, to allow the user to run the program without having to interact with it at runtime.")
 
@@ -633,8 +633,127 @@ def main():
     # ----------------------------------------------- #
 
     radius = args.radius*u.arcmin
+    if catalog_name == "main":
+        
+        "---------- Start by going through the XMM catalog --------------"
+        print(f"Searching through XMM catalog")
+        catalog_name = "Xmm_DR13"
 
-    if catalog_name == "Xmm_DR13":
+        xmm_directory = os.path.join(modeling_file_path, '4XMM_DR13'.replace("\\", "/"))
+        xmm_img = os.path.join(xmm_directory, 'img'.replace("\\", "/"))
+        xmm_closest_catalog = os.path.join(xmm_directory, "closest_catalog")
+        if not os.path.exists(xmm_directory):
+            os.mkdir(xmm_directory)
+            os.mkdir(xmm_img)
+            os.mkdir(xmm_closest_catalog)
+        
+        os_dictionary = {"active_workflow": active_workflow,
+                        "catalog_datapath": catalog_datapath,
+                        "modeling_file_path": modeling_file_path,
+                        "_var_sources_path": plot_var_sources_path,
+                        "catalog_directory" : xmm_directory,
+                        "cloesest_dataset_path": xmm_closest_catalog,
+                        "img": xmm_img,
+                        "stilts_software_path": stilts_software_path,
+                        "topcat_software_path": topcat_software_path}
+        
+        simulation_data["os_dictionary"] = os_dictionary
+        simulation_data["os_dictionary"]["plot_var_sources_path"] =plot_var_sources_path
+    
+        # call XmmCatalog Class to make modeling
+        xmm = XmmCatalog(catalog_path=catalog_path, radius=radius, simulation_data=simulation_data, user_table=add_source_table)
+        "The nearby sources table can be found in xmm.nearby_sources_table"
+        #nearby_sources_table, nearby_sources_position = xmm.nearby_sources_table,  xmm.nearby_sources_position
+        #model_dictionary = xmm.model_dictionary
+        
+        #key = "XMM"
+        #column_dictionary = {"band_flux_obs" : dict_cat.dictionary_catalog['XMM']["band_flux_obs"],
+                            #"band_flux_obs_err": dict_cat.dictionary_catalog["XMM"]["band_flux_obs_err"],
+                            #"energy_band": [0.35, 0.75, 1.5, 3.25, 8.25],
+                            #"sigma": np.array(list(np.linspace(1e-20, 1e-24, len(dict_cat.dictionary_catalog[key]["energy_band_center"])))),
+                            #"data_to_vignetting": ["SC_RA", "SC_DEC", "IAUNAME"]}
+        
+        #simulation_data["os_dictionary"]["catalog_key"] = key
+        "------------- Introducing the second catalog : Swift ------------------"
+        swi_directory = os.path.join(modeling_file_path, 'Swift'.replace("\\", "/"))
+        swi_img = os.path.join(swi_directory, 'img'.replace("\\", "/"))
+        swi_closest_catalog = os.path.join(swi_directory, "closest_catalog")
+        if not os.path.exists(swi_directory):
+            os.mkdir(swi_directory)
+            os.mkdir(swi_img)
+            os.mkdir(swi_closest_catalog)
+        
+        os_dictionary = {"active_workflow": active_workflow,
+                        "catalog_datapath": catalog_datapath,
+                        "modeling_file_path": modeling_file_path,
+                        "plot_var_sources_path": plot_var_sources_path,
+                        "catalog_directory" : swi_directory,
+                        "cloesest_dataset_path": swi_closest_catalog,
+                        "img": swi_img,
+                        "stilts_software_path": stilts_software_path,
+                        "topcat_software_path": topcat_software_path}
+        
+        simulation_data["os_dictionary"] = os_dictionary
+        
+        # call Swift Class to make modeling
+        swi = SwiftCatalog(catalog_path=catalog_path, radius=radius, simulation_data=simulation_data, user_table=add_source_table)
+        "The nearby sources table can be found in swi.nearby_sources_table and the positions in swi.nearby_sources_position"
+        #nearby_sources_table, nearby_sources_position = swi.nearby_sources_table, swi.nearby_sources_position
+        #model_dictionary = swi.model_dictionary
+        
+        #key = "Swift"
+        #column_dictionary = {"band_flux_obs": dict_cat.dictionary_catalog[key]["band_flux_obs"],
+                            #"band_flux_obs_err": dict_cat.dictionary_catalog[key]["band_flux_obs_err"],
+                            #"energy_band": dict_cat.dictionary_catalog[key]["energy_band_center"],
+                            #"sigma": np.array(list(np.linspace(1e-20, 1e-24, len(dict_cat.dictionary_catalog[key]["energy_band_center"])))),
+                            #"data_to_vignetting": ["RA", "DEC", "Swift_IAUNAME"]}
+        
+        #simulation_data["os_dictionary"]["catalog_key"] = key
+        
+        """
+        catalog_name = "CSC_2.0"
+
+        chandra_directory = os.path.join(modeling_file_path, 'Chandra'.replace("\\", "/"))
+        chandra_img = os.path.join(chandra_directory, 'img'.replace("\\", "/"))
+        chandra_closest_catalog = os.path.join(chandra_directory, "closest_catalog")
+        if not os.path.exists(chandra_directory):
+            os.mkdir(chandra_directory)
+            os.mkdir(chandra_img)
+            os.mkdir(chandra_closest_catalog)
+        
+        os_dictionary = {"active_workflow": active_workflow,
+                         "catalog_datapath": catalog_datapath,  
+                        "modeling_file_path": modeling_file_path,
+                        "plot_var_sources_path": plot_var_sources_path,
+                        "catalog_directory": chandra_directory,
+                        "cloesest_dataset_path": chandra_closest_catalog,
+                        "img": chandra_img,
+                        "stilts_software_path": stilts_software_path,
+                        "topcat_software_path": topcat_software_path}
+        
+        simulation_data["os_dictionary"] = os_dictionary
+        
+                        # cs = cone search (Harvard features)
+        # call Chandra Class to make modeling
+        csc = ChandraCatalog(catalog_path=catalog_path, radius=radius, simulation_data=simulation_data, user_table=add_source_table)
+        "The nearby sources table can be found in csc.nearby_sources_table and the positions in csc.nearby_sources_position"
+        #table_1, sources_1 = csc.nearby_sources_table, csc.nearby_sources_position
+        #table_2, sources_2 = csc.cone_search_catalog, csc.cs_nearby_sources_position
+    
+        key = "Chandra"
+        #nearby_sources_table, nearby_sources_position = table_1, sources_1
+        column_dictionary = {"band_flux_obs": dict_cat.dictionary_catalog[key]["band_flux_obs"],
+                            "band_flux_obs_err": dict_cat.dictionary_catalog[key]["band_flux_obs_err"],
+                            "energy_band": dict_cat.dictionary_catalog[key]["energy_band_center"],
+                            "sigma": np.array(list(np.linspace(1e-20, 1e-24, len(dict_cat.dictionary_catalog[key]["energy_band_center"])))),
+                            "data_to_vignetting": ["RA", "DEC", "Chandra_IAUNAME"]}
+        model_dictionary = csc.model_dictionary
+        simulation_data["os_dictionary"]["catalog_key"] = key
+        """
+
+
+
+    elif catalog_name == "Xmm_DR13":
         # Find the optimal pointing point with the Xmm_DR13 catalog
         
         # creation of 4XMM_DR13 directory
