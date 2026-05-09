@@ -21,6 +21,7 @@ from catalog_class.SwiftClass import SwiftCatalog
 from catalog_class.eRASS1Class import eRASS1Catalog
 from catalog_class.CompareCatalogClass import CompareCatalog
 from catalog_class.MatchClass import MatchCatalog
+from catalog_class.MultiCatalogPipeline import MultiCatalogPipeline
 
 # ---------------------------------- #
 
@@ -754,43 +755,30 @@ def main():
 
 
     elif catalog_name == "Xmm_DR13":
-        # Find the optimal pointing point with the Xmm_DR13 catalog
-        
-        # creation of 4XMM_DR13 directory
-        xmm_directory = os.path.join(modeling_file_path, '4XMM_DR13'.replace("\\", "/"))
-        xmm_img = os.path.join(xmm_directory, 'img'.replace("\\", "/"))
-        xmm_closest_catalog = os.path.join(xmm_directory, "closest_catalog")
-        if not os.path.exists(xmm_directory):
-            os.mkdir(xmm_directory)
-            os.mkdir(xmm_img)
-            os.mkdir(xmm_closest_catalog)
-        
-        os_dictionary = {"active_workflow": active_workflow,
-                        "catalog_datapath": catalog_datapath,
-                        "modeling_file_path": modeling_file_path,
-                        "_var_sources_path": plot_var_sources_path,
-                        "catalog_directory" : xmm_directory,
-                        "cloesest_dataset_path": xmm_closest_catalog,
-                        "img": xmm_img,
-                        "stilts_software_path": stilts_software_path,
-                        "topcat_software_path": topcat_software_path}
-        
-        simulation_data["os_dictionary"] = os_dictionary
-        simulation_data["os_dictionary"]["plot_var_sources_path"] =plot_var_sources_path
-    
-        # call XmmCatalog Class to make modeling
-        xmm = XmmCatalog(catalog_path=catalog_path, radius=radius, simulation_data=simulation_data, user_table=add_source_table)
-        nearby_sources_table, nearby_sources_position = xmm.nearby_sources_table,  xmm.nearby_sources_position
-        model_dictionary = xmm.model_dictionary
-        
-        key = "XMM"
-        column_dictionary = {"band_flux_obs" : dict_cat.dictionary_catalog['XMM']["band_flux_obs"],
-                            "band_flux_obs_err": dict_cat.dictionary_catalog["XMM"]["band_flux_obs_err"],
-                            "energy_band": [0.35, 0.75, 1.5, 3.25, 8.25],
-                            "sigma": np.array(list(np.linspace(1e-20, 1e-24, len(dict_cat.dictionary_catalog[key]["energy_band_center"])))),
-                            "data_to_vignetting": ["SC_RA", "SC_DEC", "IAUNAME"]}
-        
-        simulation_data["os_dictionary"]["catalog_key"] = key
+        # Single-catalog XMM dispatch via MultiCatalogPipeline (step 1 of
+        # multi-catalog refactor). Behavior is byte-equivalent to the previous
+        # inline branch.
+        simulation_data["os_dictionary"] = {
+            "active_workflow": active_workflow,
+            "catalog_datapath": catalog_datapath,
+            "modeling_file_path": modeling_file_path,
+            "plot_var_sources_path": plot_var_sources_path,
+            "stilts_software_path": stilts_software_path,
+            "topcat_software_path": topcat_software_path,
+        }
+        pipeline = MultiCatalogPipeline(
+            catalogs=["XMM"],
+            simulation_data=simulation_data,
+            radius=radius,
+            user_table=add_source_table,
+            catalog_path=catalog_path,
+        )
+        result = pipeline.run()
+        nearby_sources_table = result.nearby_sources_table
+        nearby_sources_position = result.nearby_sources_position
+        model_dictionary = result.model_dictionary
+        column_dictionary = result.column_dictionary
+        key = result.key
         
     elif catalog_name == "CSC_2.0":
         # Find the optimal pointing point with the Chandra catalog

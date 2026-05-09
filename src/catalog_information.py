@@ -153,15 +153,20 @@ dictionary_catalog = {
 
 dictionary_coord = {
 "XMM": {"right_ascension": "SC_RA",
-        "declination": "SC_DEC"},
+        "declination": "SC_DEC",
+        "iauname": "IAUNAME"},
 "Chandra": {"right_ascension": "RA",
-                "declination": "DEC"},
+                "declination": "DEC",
+                "iauname": "Chandra_IAUNAME"},
 "CS_Chandra": {"right_ascension": "ra",
-                "declination": "dec"},
+                "declination": "dec",
+                "iauname": "name"},
 "Swift": {"right_ascension": "RA",
-        "declination": "DEC"},
+        "declination": "DEC",
+        "iauname": "Swift_IAUNAME"},
 "eRASS1": {"right_ascension": "RA",
-                "declination": "DEC"}
+                "declination": "DEC",
+                "iauname": "eRASS_IAUNAME"}
 }
 
 band_edges = {}
