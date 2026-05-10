@@ -481,6 +481,7 @@ class XmmCatalog:
         column_nh_max = np.array([], dtype=float)
 
         column_phoindex, pho_index_min_med, pho_index_max_med = [], [], []
+        column_phoindex_err = np.array([], dtype=float)
         optimization_parameters, photon_index = [], []
 
     
@@ -540,8 +541,9 @@ class XmmCatalog:
 
                 photon_index.append(pho_value)
                 column_phoindex = np.append(column_phoindex, pho_value)
-                pho_index_max_med = np.append(pho_index_max_med, pho_value_max) 
-                pho_index_min_med = np.append(pho_index_min_med, pho_value_min) 
+                column_phoindex_err = np.append(column_phoindex_err, perr)
+                pho_index_max_med = np.append(pho_index_max_med, pho_value_max)
+                pho_index_min_med = np.append(pho_index_min_med, pho_value_min)
 
                 print(f"Photon Index values (Source: Optimized value) - "
                     f"pho_index: {pho_value}, pho_index min: {pho_value_min}, pho_index max: {pho_value_max}")
@@ -574,18 +576,17 @@ class XmmCatalog:
             pho_value_min = pho_value - perr
             pho_value_max = pho_value + perr
 
-            pho_index_min_med = np.append(pho_index_min_med, pho_value_min) 
-            pho_index_max_med = np.append(pho_index_max_med, pho_value_max) 
+            pho_index_min_med = np.append(pho_index_min_med, pho_value_min)
+            pho_index_max_med = np.append(pho_index_max_med, pho_value_max)
             column_phoindex = np.append(column_phoindex, pho_value)
+            column_phoindex_err = np.append(column_phoindex_err, perr)
             print(f"Photon Index values (Source: Optimized value) - "
                     f"pho_index: {pho_value}, pho_index min: {pho_value_min}, pho_index max: {pho_value_max}")
-                  
+
         self.visualization_interp(optimization_parameters=optimization_parameters, photon_index=photon_index)
-        
-        #col_names = ["Photon Index", "Photon Index Error", "Nh", "Nh min value", "Nh max value"]
-        #col_data = [column_phoindex, perr,  column_nh, column_nh_min, column_nh_max]
-        col_names = ["Photon Index", "Nh", "Nh min value", "Nh max value"]
-        col_data = [column_phoindex, column_nh, column_nh_min, column_nh_max]
+
+        col_names = ["Photon Index", "Photon Index Error", "Nh", "Nh min value", "Nh max value"]
+        col_data = [column_phoindex, column_phoindex_err, column_nh, column_nh_min, column_nh_max]
     
         for name, data in zip(col_names, col_data):
             self.nearby_sources_table[name] = data

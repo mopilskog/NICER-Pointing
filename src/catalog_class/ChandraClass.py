@@ -684,17 +684,20 @@ class ChandraCatalog:
         
         cs_photon_index_list, photon_index_list = [], []
         cs_parameters_list, parameters_list = [], []
+        cs_perr_list, perr_list = [], []
         self.cs_nh_list, self.nh_list = [], []
-        
+
         for (index, item), nh_value in zip(enumerate(self.cone_search_catalog["powlaw_gamma"]), self.cone_search_catalog["nh_gal"]):
-            # Photon Index 
+            # Photon Index
             if item != 0:
                 cs_photon_index_list.append(item)
+                cs_perr_list.append(0.0)
             else:
                 photon, params, perr = self.optim_index(key=cs_key, table=self.cone_search_catalog, index=index)
                 photon = photon if photon > 0.0 else 1.7
                 cs_parameters_list.append(params)
                 cs_photon_index_list.append(photon)
+                cs_perr_list.append(perr)
             if nh_value != 0:
                 self.cs_nh_list.append(nh_value*1e20)
             else:
@@ -717,6 +720,7 @@ class ChandraCatalog:
                 photon = photon if photon > 0.0 else 1.7
                 parameters_list.append(params)
                 photon_index_list.append(photon)
+                perr_list.append(perr)
                     
                 #if self.cone_search_catalog["nh_gal"][index] != 0.0:
 
@@ -737,10 +741,11 @@ class ChandraCatalog:
         self.visualization_interp(optimization_parameters=parameters_list, photon_index=photon_index_list, key=key)
         self.nearby_sources_table["Photon Index"] = photon_index_list
         self.nearby_sources_table["Nh"] = self.nh_list
-        self.nearby_sources_table["Photon Index Error"] = perr
-        
+        self.nearby_sources_table["Photon Index Error"] = perr_list
+
         self.cone_search_catalog["Photon Index"] = cs_photon_index_list
         self.cone_search_catalog['Nh'] = self.cs_nh_list
+        self.cone_search_catalog["Photon Index Error"] = cs_perr_list
             
         return cs_photon_index_list, photon_index_list
                 

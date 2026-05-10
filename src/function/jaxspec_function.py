@@ -154,26 +154,34 @@ def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_i
     print(f"\n{colored('Modeling spectra...', 'yellow', attrs=['underline'])}")
     total_spectra = []
     total_var_spectra = []
-    size = 1000
-    
+    size = 100
+
     for index, vignet_factor in tqdm(enumerate(nearby_sources_table["vignetting_factor"])):
-        parameters = {}
         norm, iauname = norm_estimation(nearby_sources_table, model=model, index=index, key=key)
+
+        pho_idx = nearby_sources_table["Photon Index"][index]
+        pho_idx = pho_idx if pho_idx > 0.0 else 1.7
+        pho_idx_err = nearby_sources_table["Photon Index Error"][index]
+        if pho_idx_err > 0.0:
+            alpha_samples = np.random.normal(pho_idx, pho_idx_err, size)
+        else:
+            alpha_samples = np.full(size, pho_idx)
+
         parameters = {
             "tbabs_1": {"N_H": np.full(size, nearby_sources_table["Nh"][index]/1e22)},
             "powerlaw_1": {
-                "alpha": np.full(size, nearby_sources_table["Photon Index"][index] if nearby_sources_table["Photon Index"][index] > 0.0 else 1.7),
+                "alpha": alpha_samples,
                 "norm": np.full(size, norm),
             }
         }
-        
+
         spectra = fakeit_for_multiple_parameters(instrument=obsconfig, model=model, parameters=parameters) * vignet_factor
 
         if index in var_index:
             total_var_spectra.append(spectra)
-        
+
         total_spectra.append(spectra)
-        
+
     return total_spectra, total_var_spectra
 
 
@@ -222,81 +230,59 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
     
     object_data = simulation_data["object_data"]
     os_dictionary = simulation_data["os_dictionary"]
-    graph_data = {"min_lim_x": 0.2,
-                  "max_lim_x": 10.0,
-                  "percentile_0": 10,
-                  "percentile_2": 90}
+    graph_data = {"min_lim_x": 0.2, "max_lim_x": 10.0,
+                  "min_lim_y": 5e-3, "max_lim_y": 3e5}
 
-    figure_1, axes = plt.subplots(1, 3, figsize=(17, 9), sharey=True)
+    figure_1, axes = plt.subplots(1, 2, figsize=(14, 7), sharey=True)
     figure_1.suptitle(f"Spectral modeling close to {object_data['object_name']}\ncatalog : {catalog_name}", fontsize=20)
     figure_1.text(0.5, 0.04, 'Energy [keV]', ha='center', va='center', fontsize=16)
     figure_1.text(0.085, 0.5, 'Counts', ha='center', va='center', rotation='vertical', fontsize=16)
 
     for ax in axes:
         ax.set_xlim([graph_data["min_lim_x"], graph_data["max_lim_x"]])
+        ax.set_ylim([graph_data["min_lim_y"], graph_data["max_lim_y"]])
         ax.loglog()
 
+    energies = obsconfig.out_energies[0]
+
+    # Left panel: per-source curve-spaghetti. For each source, every alpha-sampled
+    # realization is drawn with low alpha so the visual density of overlap conveys
+    # the spread arising from the photon-index fit uncertainty.
     ax0 = axes[0]
-    data_to_save = {}
+    cmap = plt.get_cmap("tab20")
     for i, spectra in enumerate(total_spectra):
-    #for spectra in total_spectra:
-        ax0.step(obsconfig.out_energies[0],
-                np.median(spectra, axis=0),
-                where="post")
-        x_values = obsconfig.out_energies[0]
-        y_values = np.median(spectra, axis=0)
-
-        data_to_save[f"x_{i}"] = x_values
-        data_to_save[f"y_{i}"] = y_values
-
+        color = cmap(i % 20)
+        for j in range(spectra.shape[0]):
+            ax0.step(energies, spectra[j, :], where="post", color=color, alpha=0.05)
     ax0.set_title("Spectra from Nearby Sources")
 
+    # Index-wise sum across sources: spectrum_summed has shape (size, n_energy);
+    # row i is the total at iteration i (sum of every source's i-th realization).
     spectrum_summed = 0.0
     for item in range(len(total_spectra)):
         spectrum_summed += total_spectra[item]
 
-    spectrum_var_summed = 0.0
-    for item in range(len(total_var_spectra)):
-        spectrum_var_summed += total_var_spectra[item]  
-    y_upper = np.median(spectrum_summed, axis=0) + np.median(spectrum_var_summed, axis=0)
-    y_lower = np.median(spectrum_summed, axis=0) - np.median(spectrum_var_summed, axis=0)
-
+    # Right panel: every total summed spectrum drawn as a low-alpha step curve.
+    # Width of the cloud reflects the propagated photon-index uncertainty.
     ax1 = axes[1]
-    ax1.step(obsconfig.out_energies[0],
-            np.median(spectrum_summed, axis=0),
-            where='post', color='black'
-            )
-    data_to_save["x_sum"] = obsconfig.out_energies[0]
-    data_to_save["y_sum"] = np.median(spectrum_summed, axis=0)
-
-    test_path = "/Users/mariepilskog/Desktop/Master"
-    path = test_path + "/xmmirap.npz" 
-    np.savez(path, **data_to_save)
-    print(f"Data successfully saved to {path}")
-
+    for j in range(spectrum_summed.shape[0]):
+        ax1.step(energies, spectrum_summed[j, :], where="post", color='black', alpha=0.05)
     ax1.set_title("Sum of spectra")
-
-    ax2 = axes[2]
-    ax2.errorbar(obsconfig.out_energies[0], y=np.median(spectrum_summed, axis=0), yerr=np.median(spectrum_var_summed, axis=0), 
-                fmt="none", ecolor='red', capsize=2, capthick=3,
-                label='error')
-    ax2.step(obsconfig.out_energies[0], np.median(spectrum_summed, axis=0), color='black', label="sum powerlaw")
-    ax2.set_title("Spectrum Summed with var sources error")
-    ax2.legend(loc='upper right')
-    ax2.loglog()
 
     key = simulation_data["os_dictionary"]["catalog_key"]
     img_path = os.path.join(os_dictionary['img'], f"{key}_spectral_modeling_close_to_{object_data['object_name']}.png".replace(" ", "_")).replace("\\", "/")
     plt.savefig(img_path)
     plt.show()
-    
+
+    # .txt envelope (used by write_txt_file): median + 16th / 84th percentile
+    # of the 100 total summed spectra at each energy bin.
     data = {
-        "Energy": obsconfig.out_energies[0],
+        "Energy": energies,
         "Counts": np.median(spectrum_summed, axis=0),
-        "Upper limit": y_upper,
-        "Lower limit": y_lower
+        "Upper limit": np.percentile(spectrum_summed, 84, axis=0),
+        "Lower limit": np.percentile(spectrum_summed, 16, axis=0),
     }
-    
+
     return data
 
 

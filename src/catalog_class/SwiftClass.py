@@ -420,13 +420,13 @@ class SwiftCatalog:
         of astronomical sources in the Swift catalog.
         """
         key = "Swift"
-        photon_index_list, parameters_list, nh_list = [], [], []
+        photon_index_list, parameters_list, nh_list, perr_list = [], [], [], []
 
         for index in range(len(self.nearby_sources_table)):
             #nh_list.append(3e20)
             ra_val = self.nearby_sources_table[self.ra][index]
             dec_val = self.nearby_sources_table[self.dec][index]
-            
+
             distances = np.sqrt((self.nh_dictionnary['RA2000'] - ra_val)**2 + (self.nh_dictionnary["DEC2000"] - dec_val)**2)
             best_match_index = np.argmin(distances)
 
@@ -435,12 +435,13 @@ class SwiftCatalog:
 
             photon, perr, params = self.optim_index(table=self.nearby_sources_table, key=key, index=index)
             photon_index_list.append(photon if photon > 0.0 else 1.7)
+            perr_list.append(perr)
             parameters_list.append(params)
-        
+
         self.visualization_inter(optimization_parameters=parameters_list, photon_index=photon_index_list, key=key)
-        
+
         self.nearby_sources_table["Photon Index"] = photon_index_list
-        self.nearby_sources_table["Photon Index Error"] = perr
+        self.nearby_sources_table["Photon Index Error"] = perr_list
         self.nearby_sources_table["Nh"] = nh_list
         
         return photon_index_list
