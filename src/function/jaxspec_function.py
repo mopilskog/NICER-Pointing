@@ -10,10 +10,17 @@ from tqdm import tqdm
 from jaxspec.data.util import fakeit_for_multiple_parameters
 from typing import List
 
+import logging
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import scienceplots  # noqa: F401  registers 'science' / related styles with matplotlib
 import jax.numpy as jnp
+
+# Silence matplotlib's texmanager INFO log about "No LaTeX-compatible font found
+# for the serif fontfamily in rcParams". The rendering still uses Computer Modern
+# via LaTeX itself; the message is just rcParams-introspection noise.
+logging.getLogger("matplotlib.texmanager").setLevel(logging.WARNING)
 
 # ------------------------------ #
 
@@ -233,28 +240,7 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
     graph_data = {"min_lim_x": 0.2, "max_lim_x": 10.0,
                   "min_lim_y": 5e-3, "max_lim_y": 3e5}
 
-    figure_1, axes = plt.subplots(1, 2, figsize=(14, 7), sharey=True)
-    figure_1.suptitle(f"Spectral modeling close to {object_data['object_name']}\ncatalog : {catalog_name}", fontsize=20)
-    figure_1.text(0.5, 0.04, 'Energy [keV]', ha='center', va='center', fontsize=16)
-    figure_1.text(0.085, 0.5, 'Counts', ha='center', va='center', rotation='vertical', fontsize=16)
-
-    for ax in axes:
-        ax.set_xlim([graph_data["min_lim_x"], graph_data["max_lim_x"]])
-        ax.set_ylim([graph_data["min_lim_y"], graph_data["max_lim_y"]])
-        ax.loglog()
-
     energies = obsconfig.out_energies[0]
-
-    # Left panel: per-source curve-spaghetti. For each source, every alpha-sampled
-    # realization is drawn with low alpha so the visual density of overlap conveys
-    # the spread arising from the photon-index fit uncertainty.
-    ax0 = axes[0]
-    cmap = plt.get_cmap("tab20")
-    for i, spectra in enumerate(total_spectra):
-        color = cmap(i % 20)
-        for j in range(spectra.shape[0]):
-            ax0.step(energies, spectra[j, :], where="post", color=color, alpha=0.05)
-    ax0.set_title("Spectra from Nearby Sources")
 
     # Index-wise sum across sources: spectrum_summed has shape (size, n_energy);
     # row i is the total at iteration i (sum of every source's i-th realization).
@@ -262,17 +248,50 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
     for item in range(len(total_spectra)):
         spectrum_summed += total_spectra[item]
 
-    # Right panel: every total summed spectrum drawn as a low-alpha step curve.
-    # Width of the cloud reflects the propagated photon-index uncertainty.
-    ax1 = axes[1]
-    for j in range(spectrum_summed.shape[0]):
-        ax1.step(energies, spectrum_summed[j, :], where="post", color='black', alpha=0.05)
-    ax1.set_title("Sum of spectra")
+    # Use scienceplots' "science" style for LaTeX-formatted publication-quality
+    # plots. Scoped to this function so other matplotlib output in the project
+    # is unaffected.
+    with plt.style.context(['science']):
+        figure_1, axes = plt.subplots(1, 2, figsize=(14, 7), sharey=True)
+        figure_1.suptitle(f"Spectral modeling close to {object_data['object_name']}\ncatalog : {catalog_name}", fontsize=20)
+        figure_1.text(0.5, 0.04, 'Energy [keV]', ha='center', va='center', fontsize=16)
+        figure_1.text(0.085, 0.5, 'Counts', ha='center', va='center', rotation='vertical', fontsize=16)
 
-    key = simulation_data["os_dictionary"]["catalog_key"]
-    img_path = os.path.join(os_dictionary['img'], f"{key}_spectral_modeling_close_to_{object_data['object_name']}.png".replace(" ", "_")).replace("\\", "/")
-    plt.savefig(img_path)
-    plt.show()
+        for ax in axes:
+            ax.set_xlim([graph_data["min_lim_x"], graph_data["max_lim_x"]])
+            ax.set_ylim([graph_data["min_lim_y"], graph_data["max_lim_y"]])
+            ax.loglog()
+
+        # Left panel: per-source curve-spaghetti. For each source, every
+        # alpha-sampled realization is drawn with low alpha so the visual
+        # density of overlap conveys the spread arising from the photon-index
+        # fit uncertainty. Colors come from a generated pastel rainbow:
+        # hues spread evenly across [0, 0.85] (avoiding the red wrap-around),
+        # moderate saturation for distinct hues, high value for the pastel
+        # feel. Scales to any source count without color repetition.
+        ax0 = axes[0]
+        from matplotlib.colors import hsv_to_rgb
+        n_sources = max(len(total_spectra), 1)
+        hues = np.linspace(0.0, 0.85, n_sources) if n_sources > 1 else np.array([0.0])
+        pastel_colors = [hsv_to_rgb([h, 0.55, 0.92]) for h in hues]
+        for i, spectra in enumerate(total_spectra):
+            color = pastel_colors[i]
+            for j in range(spectra.shape[0]):
+                ax0.step(energies, spectra[j, :], where="post", color=color, alpha=0.05)
+        ax0.set_title("Spectra from Nearby Sources")
+
+        # Right panel: every total summed spectrum drawn as a low-alpha step
+        # curve. Width of the cloud reflects the propagated photon-index
+        # uncertainty.
+        ax1 = axes[1]
+        for j in range(spectrum_summed.shape[0]):
+            ax1.step(energies, spectrum_summed[j, :], where="post", color='lightsteelblue', alpha=0.05)
+        ax1.set_title("Sum of spectra")
+
+        key = simulation_data["os_dictionary"]["catalog_key"]
+        img_path = os.path.join(os_dictionary['img'], f"{key}_spectral_modeling_close_to_{object_data['object_name']}.png".replace(" ", "_")).replace("\\", "/")
+        plt.savefig(img_path)
+        plt.show()
 
     # .txt envelope (used by write_txt_file): median + 16th / 84th percentile
     # of the 100 total summed spectra at each energy bin.
