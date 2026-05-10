@@ -4,6 +4,7 @@ from astropy.coordinates import SkyCoord
 from astropy.table import Table
 from astropy.units import Quantity
 from dataclasses import dataclass
+from termcolor import colored
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -82,14 +83,6 @@ class MultiCatalogPipeline:
         )
 
     def _run_single_catalog(self, cat_key: str) -> PipelineResult:
-        # Single-catalog dispatch is wired up one catalog at a time. Step 1 of
-        # the multi-catalog refactor handles XMM only; Swift / eRASS1 / Chandra
-        # are added in step 2.
-        if cat_key != "XMM":
-            raise NotImplementedError(
-                f"Single-catalog dispatch for {cat_key!r} not yet wired in."
-            )
-
         cfg = CATALOG_REGISTRY[cat_key]
         self._setup_catalog_directory(cfg)
 
@@ -100,15 +93,55 @@ class MultiCatalogPipeline:
             user_table=self.user_table,
         )
 
+        if cat_key == "Chandra":
+            return self._build_chandra_result(catalog_instance)
+        return self._build_standard_result(cat_key, catalog_instance)
+
+    def _build_standard_result(self, cat_key: str, catalog_instance) -> PipelineResult:
+        # Identical pattern for XMM / Swift / eRASS1: the per-catalog class
+        # exposes nearby_sources_table, nearby_sources_position, model_dictionary
+        # and we build column_dictionary from dict_cat lookups.
         column_dictionary = self._build_column_dictionary(cat_key)
         self.simulation_data["os_dictionary"]["catalog_key"] = cat_key
-
         return PipelineResult(
             nearby_sources_table=catalog_instance.nearby_sources_table,
             nearby_sources_position=catalog_instance.nearby_sources_position,
             model_dictionary=catalog_instance.model_dictionary,
             column_dictionary=column_dictionary,
             key=cat_key,
+        )
+
+    def _build_chandra_result(self, catalog_instance) -> PipelineResult:
+        # Chandra single-catalog mode prompts the user to choose between the
+        # on-disk Chandra catalog and the Harvard cone-search (CS_Chandra).
+        # Same prompt text and retry-on-bad-input loop as the original main.py
+        # branch.
+        prompt = (
+            f"Which Table do you chose to follow the modeling ? "
+            f"{colored('Chandra / CS_Chandra', 'magenta')}\n"
+        )
+        answer = str(input(prompt))
+        while answer not in ("Chandra", "CS_Chandra"):
+            print(f"{colored('Key error ! ', 'red')}. Please retry !")
+            answer = str(input(prompt))
+
+        if answer == "Chandra":
+            nst = catalog_instance.nearby_sources_table
+            nsp = catalog_instance.nearby_sources_position
+            md = catalog_instance.model_dictionary
+        else:  # CS_Chandra
+            nst = catalog_instance.cone_search_catalog
+            nsp = catalog_instance.cs_nearby_sources_position
+            md = catalog_instance.cs_model_dictionary
+
+        column_dictionary = self._build_column_dictionary(answer)
+        self.simulation_data["os_dictionary"]["catalog_key"] = answer
+        return PipelineResult(
+            nearby_sources_table=nst,
+            nearby_sources_position=nsp,
+            model_dictionary=md,
+            column_dictionary=column_dictionary,
+            key=answer,
         )
 
     def _setup_catalog_directory(self, cfg: Dict) -> None:

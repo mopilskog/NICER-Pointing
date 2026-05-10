@@ -781,137 +781,78 @@ def main():
         key = result.key
         
     elif catalog_name == "CSC_2.0":
-        # Find the optimal pointing point with the Chandra catalog
-        
-        # creation of Chandra directory
-        chandra_directory = os.path.join(modeling_file_path, 'Chandra'.replace("\\", "/"))
-        chandra_img = os.path.join(chandra_directory, 'img'.replace("\\", "/"))
-        chandra_closest_catalog = os.path.join(chandra_directory, "closest_catalog")
-        if not os.path.exists(chandra_directory):
-            os.mkdir(chandra_directory)
-            os.mkdir(chandra_img)
-            os.mkdir(chandra_closest_catalog)
-        
-        os_dictionary = {"active_workflow": active_workflow,
-                         "catalog_datapath": catalog_datapath,  
-                        "modeling_file_path": modeling_file_path,
-                        "plot_var_sources_path": plot_var_sources_path,
-                        "catalog_directory": chandra_directory,
-                        "cloesest_dataset_path": chandra_closest_catalog,
-                        "img": chandra_img,
-                        "stilts_software_path": stilts_software_path,
-                        "topcat_software_path": topcat_software_path}
-        
-        simulation_data["os_dictionary"] = os_dictionary
-        
-                        # cs = cone search (Harvard features)
-        # call Chandra Class to make modeling
-        csc = ChandraCatalog(catalog_path=catalog_path, radius=radius, simulation_data=simulation_data, user_table=add_source_table)
-        table_1, sources_1 = csc.nearby_sources_table, csc.nearby_sources_position
-        table_2, sources_2 = csc.cone_search_catalog, csc.cs_nearby_sources_position
-        
-        answer = str(input(f"Which Table do you chose to follow the modeling ? {colored('Chandra / CS_Chandra', 'magenta')}\n"))
-        while True:
-            if answer == "Chandra":
-                key = "Chandra"
-                nearby_sources_table, nearby_sources_position = table_1, sources_1
-                column_dictionary = {"band_flux_obs": dict_cat.dictionary_catalog[key]["band_flux_obs"],
-                                    "band_flux_obs_err": dict_cat.dictionary_catalog[key]["band_flux_obs_err"],
-                                    "energy_band": dict_cat.dictionary_catalog[key]["energy_band_center"],
-                                    "sigma": np.array(list(np.linspace(1e-20, 1e-24, len(dict_cat.dictionary_catalog[key]["energy_band_center"])))),
-                                    "data_to_vignetting": ["RA", "DEC", "Chandra_IAUNAME"]}
-                model_dictionary = csc.model_dictionary
-                simulation_data["os_dictionary"]["catalog_key"] = key
-                break
-            elif answer == "CS_Chandra":
-                key = "CS_Chandra"
-                nearby_sources_table, nearby_sources_position = table_2, sources_2
-                column_dictionary = {"band_flux_obs": dict_cat.dictionary_catalog[key]["band_flux_obs"],
-                                    "band_flux_obs_err": dict_cat.dictionary_catalog[key]["band_flux_obs_err"],
-                                    "energy_band": dict_cat.dictionary_catalog[key]["energy_band_center"],
-                                    "sigma": np.array(list(np.linspace(1e-20, 1e-24, len(dict_cat.dictionary_catalog[key]["energy_band_center"])))),
-                                    "data_to_vignetting": ["ra", "dec", "name"]}
-                model_dictionary = csc.cs_model_dictionary
-                simulation_data["os_dictionary"]["catalog_key"] = key
-                break
-            else:
-                print(f"{colored('Key error ! ', 'red')}. Please retry !")
-                answer = str(input(f"Which Table do you chose to follow the modeling ? {colored('Chandra / CS_Chandra', 'magenta')}\n"))
-        
+        # Single-catalog Chandra dispatch via MultiCatalogPipeline (step 2 of
+        # multi-catalog refactor). The orchestrator runs the same Chandra /
+        # CS_Chandra prompt as before.
+        simulation_data["os_dictionary"] = {
+            "active_workflow": active_workflow,
+            "catalog_datapath": catalog_datapath,
+            "modeling_file_path": modeling_file_path,
+            "plot_var_sources_path": plot_var_sources_path,
+            "stilts_software_path": stilts_software_path,
+            "topcat_software_path": topcat_software_path,
+        }
+        pipeline = MultiCatalogPipeline(
+            catalogs=["Chandra"],
+            simulation_data=simulation_data,
+            radius=radius,
+            user_table=add_source_table,
+            catalog_path=catalog_path,
+        )
+        result = pipeline.run()
+        nearby_sources_table = result.nearby_sources_table
+        nearby_sources_position = result.nearby_sources_position
+        model_dictionary = result.model_dictionary
+        column_dictionary = result.column_dictionary
+        key = result.key
+
     elif catalog_name == "Swift":
-        # Find the optimal pointing point with the Swift catalog
-        
-        # creation of Swift directory
-        swi_directory = os.path.join(modeling_file_path, 'Swift'.replace("\\", "/"))
-        swi_img = os.path.join(swi_directory, 'img'.replace("\\", "/"))
-        swi_closest_catalog = os.path.join(swi_directory, "closest_catalog")
-        if not os.path.exists(swi_directory):
-            os.mkdir(swi_directory)
-            os.mkdir(swi_img)
-            os.mkdir(swi_closest_catalog)
-        
-        os_dictionary = {"active_workflow": active_workflow,
-                        "catalog_datapath": catalog_datapath,
-                        "modeling_file_path": modeling_file_path,
-                        "plot_var_sources_path": plot_var_sources_path,
-                        "catalog_directory" : swi_directory,
-                        "cloesest_dataset_path": swi_closest_catalog,
-                        "img": swi_img,
-                        "stilts_software_path": stilts_software_path,
-                        "topcat_software_path": topcat_software_path}
-        
-        simulation_data["os_dictionary"] = os_dictionary
-        
-        # call Swift Class to make modeling
-        swi = SwiftCatalog(catalog_path=catalog_path, radius=radius, simulation_data=simulation_data, user_table=add_source_table)
-        nearby_sources_table, nearby_sources_position = swi.nearby_sources_table, swi.nearby_sources_position
-        model_dictionary = swi.model_dictionary
-        
-        key = "Swift"
-        column_dictionary = {"band_flux_obs": dict_cat.dictionary_catalog[key]["band_flux_obs"],
-                            "band_flux_obs_err": dict_cat.dictionary_catalog[key]["band_flux_obs_err"],
-                            "energy_band": dict_cat.dictionary_catalog[key]["energy_band_center"],
-                            "sigma": np.array(list(np.linspace(1e-20, 1e-24, len(dict_cat.dictionary_catalog[key]["energy_band_center"])))),
-                            "data_to_vignetting": ["RA", "DEC", "Swift_IAUNAME"]}
-        
-        simulation_data["os_dictionary"]["catalog_key"] = key
-        
+        # Single-catalog Swift dispatch via MultiCatalogPipeline.
+        simulation_data["os_dictionary"] = {
+            "active_workflow": active_workflow,
+            "catalog_datapath": catalog_datapath,
+            "modeling_file_path": modeling_file_path,
+            "plot_var_sources_path": plot_var_sources_path,
+            "stilts_software_path": stilts_software_path,
+            "topcat_software_path": topcat_software_path,
+        }
+        pipeline = MultiCatalogPipeline(
+            catalogs=["Swift"],
+            simulation_data=simulation_data,
+            radius=radius,
+            user_table=add_source_table,
+            catalog_path=catalog_path,
+        )
+        result = pipeline.run()
+        nearby_sources_table = result.nearby_sources_table
+        nearby_sources_position = result.nearby_sources_position
+        model_dictionary = result.model_dictionary
+        column_dictionary = result.column_dictionary
+        key = result.key
+
     elif catalog_name == "eRASS1":
-        # Find the optimal pointing with the eRASS1 catalog
-        
-        # creation of eRASS1 directory
-        eRo_directory = os.path.join(modeling_file_path, 'eRASS1'.replace("\\", "/"))
-        eRo_img = os.path.join(eRo_directory, 'img'.replace("\\", "/"))
-        eRo_closest_catalog = os.path.join(eRo_directory, "closest_catalog")
-        if not os.path.exists(eRo_directory):
-            os.mkdir(eRo_directory)
-            os.mkdir(eRo_img)
-            os.mkdir(eRo_closest_catalog)
-            
-        os_dictionary = {"active_workflow": active_workflow,
-                         "catalog_datapath": catalog_datapath,
-                        "modeling_file_path": modeling_file_path,
-                        "plot_var_sources_path": plot_var_sources_path,
-                        "catalog_directory" : eRo_directory,
-                        "cloesest_dataset_path": eRo_closest_catalog,
-                        "img": eRo_img,
-                        "stilts_software_path": stilts_software_path,
-                        "topcat_software_path": topcat_software_path}
-        
-        simulation_data["os_dictionary"] = os_dictionary
-        # call eRASS1 Class to make modeling
-        eRo = eRASS1Catalog(catalog_path=catalog_path, radius=radius, simulation_data=simulation_data, user_table=add_source_table)
-        nearby_sources_table, nearby_sources_position = eRo.nearby_sources_table, eRo.nearby_sources_position
-        model_dictionary = eRo.model_dictionary
-        
-        key = "eRASS1"
-        column_dictionary = {"band_flux_obs": dict_cat.dictionary_catalog[key]["band_flux_obs"],
-                            "band_flux_obs_err": dict_cat.dictionary_catalog[key]["band_flux_obs_err"],
-                            "energy_band": dict_cat.dictionary_catalog[key]["energy_band_center"],
-                            "sigma": np.array(list(np.linspace(1e-20, 1e-24, len(dict_cat.dictionary_catalog[key]["energy_band_center"])))),
-                            "data_to_vignetting": ["RA", "DEC", "eRASS_IAUNAME"]}
-        
-        simulation_data["os_dictionary"]["catalog_key"] = key
+        # Single-catalog eRASS1 dispatch via MultiCatalogPipeline.
+        simulation_data["os_dictionary"] = {
+            "active_workflow": active_workflow,
+            "catalog_datapath": catalog_datapath,
+            "modeling_file_path": modeling_file_path,
+            "plot_var_sources_path": plot_var_sources_path,
+            "stilts_software_path": stilts_software_path,
+            "topcat_software_path": topcat_software_path,
+        }
+        pipeline = MultiCatalogPipeline(
+            catalogs=["eRASS1"],
+            simulation_data=simulation_data,
+            radius=radius,
+            user_table=add_source_table,
+            catalog_path=catalog_path,
+        )
+        result = pipeline.run()
+        nearby_sources_table = result.nearby_sources_table
+        nearby_sources_position = result.nearby_sources_position
+        model_dictionary = result.model_dictionary
+        column_dictionary = result.column_dictionary
+        key = result.key
  
     elif catalog_name == "match":
         # Find optimal pointing point with using two catalog Xmm and Chandra
