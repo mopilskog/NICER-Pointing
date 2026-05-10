@@ -283,7 +283,16 @@ class XmmCatalog:
             if c_f.ang_separation(object_position, src_position[number]) < radius:
                 nearby_src_table.add_row(small_table[number])
         nearby_src_position = SkyCoord(ra=nearby_src_table[self.ra], dec=nearby_src_table[self.dec], unit=u.deg)
-            
+
+        nearby_src_table, nearby_src_position = c_f.exclude_target_from_nearby_sources(
+            nearby_sources_table=nearby_src_table,
+            object_position=object_position,
+            object_name=object_name,
+            ra_col=self.ra,
+            dec_col=self.dec,
+            iauname_col=dict_cat.dictionary_coord[self.key]["iauname"],
+        )
+
         try:
             if len(nearby_src_table) != 0:
                 print((f"We have detected {len(nearby_src_table)} sources close to {object_name}.\n"))

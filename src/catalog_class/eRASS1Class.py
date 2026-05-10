@@ -237,7 +237,16 @@ class eRASS1Catalog:
         
            
         nearby_sources_position = SkyCoord(ra=unique_table[self.ra], dec=unique_table[self.dec], unit=u.deg)
-                
+
+        unique_table, nearby_sources_position = c_f.exclude_target_from_nearby_sources(
+            nearby_sources_table=unique_table,
+            object_position=object_position,
+            object_name=object_name,
+            ra_col=self.ra,
+            dec_col=self.dec,
+            iauname_col=dict_cat.dictionary_coord["eRASS1"]["iauname"],
+        )
+
         try :
             if len(unique_table) != 0:
                 print((f"We have detected {len(unique_table)} sources close to {object_data['object_name']}"))

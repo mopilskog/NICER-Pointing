@@ -183,6 +183,14 @@ class ChandraCatalog:
         self.cone_search_catalog = self.load_cs_catalog(radius=radius, object_data=simulation_data["object_data"])
         self.cs_nearby_sources_position = SkyCoord(ra=list(self.cone_search_catalog[self.ra_cs]), dec=list(self.cone_search_catalog[self.dec_cs]), unit=u.deg)
         self.cone_search_catalog = self.variability_column()
+        self.cone_search_catalog, self.cs_nearby_sources_position = c_f.exclude_target_from_nearby_sources(
+            nearby_sources_table=self.cone_search_catalog,
+            object_position=simulation_data["object_data"]["object_position"],
+            object_name=simulation_data["object_data"]["object_name"],
+            ra_col=self.ra_cs,
+            dec_col=self.dec_cs,
+            iauname_col=dict_cat.dictionary_coord["CS_Chandra"]["iauname"],
+        )
         self.cone_search_catalog = self.threshold(self.cone_search_catalog)
         
         self.nearby_sources_table, self.nearby_sources_position = self.find_nearby_sources(radius=radius, object_data=simulation_data["object_data"], user_table=user_table)
@@ -304,7 +312,16 @@ class ChandraCatalog:
             sys.exit()
             
         nearby_sources_position = SkyCoord(ra=unique_table[self.ra], dec=unique_table[self.dec], unit=u.deg)
-                
+
+        unique_table, nearby_sources_position = c_f.exclude_target_from_nearby_sources(
+            nearby_sources_table=unique_table,
+            object_position=object_position,
+            object_name=object_name,
+            ra_col=self.ra,
+            dec_col=self.dec,
+            iauname_col=dict_cat.dictionary_coord["Chandra"]["iauname"],
+        )
+
         try :
             if len(unique_table) != 0:
                 print((f"We have detected {len(unique_table)} sources close to {object_name}"))

@@ -70,6 +70,57 @@ def ang_separation(reference, obj) -> Angle:
     return reference.separation(obj)
 
 
+def exclude_target_from_nearby_sources(nearby_sources_table: Table,
+                                       object_position: SkyCoord,
+                                       object_name: str,
+                                       ra_col: str,
+                                       dec_col: str,
+                                       iauname_col: str,
+                                       threshold_arcsec: float = 10.0) -> Tuple[Table, SkyCoord]:
+    """If the source closest to the target is within ``threshold_arcsec`` of
+    the target's position, drop it (assumed to be the target itself).
+
+    Pulsar coordinates from Simbad are typically known to sub-arcsecond
+    accuracy, so any catalog detection within a few arcseconds is the target.
+    The function excludes at most one row per call (the closest), so a tight
+    pair of genuine neighbors near the target won't both be removed; the second
+    member would still pass through.
+
+    Returns the (possibly trimmed) table and a freshly-built SkyCoord for it.
+    Emits a yellow console warning on exclusion.
+    """
+    if len(nearby_sources_table) == 0:
+        return nearby_sources_table, SkyCoord(ra=[], dec=[], unit=u.deg)
+
+    sources_position = SkyCoord(
+        ra=nearby_sources_table[ra_col],
+        dec=nearby_sources_table[dec_col],
+        unit=u.deg,
+    )
+    separations = np.array([
+        ang_separation(object_position, src).arcsec
+        for src in sources_position
+    ])
+    closest_idx = int(np.argmin(separations))
+    closest_sep = separations[closest_idx]
+
+    if closest_sep < threshold_arcsec:
+        excluded_name = nearby_sources_table[iauname_col][closest_idx]
+        print(colored(
+            f"Excluded {excluded_name} at {closest_sep:.2f}\" from {object_name} "
+            f"(within {threshold_arcsec}\" threshold — assumed to be the target itself).",
+            'yellow'
+        ))
+        nearby_sources_table.remove_row(closest_idx)
+        sources_position = SkyCoord(
+            ra=nearby_sources_table[ra_col],
+            dec=nearby_sources_table[dec_col],
+            unit=u.deg,
+        )
+
+    return nearby_sources_table, sources_position
+
+
 def signal_to_noise(SrcCtsRate, BkgSrcRates, InstBkgd, ExpTime) -> float:
     """
     Calculate the signal-to-noise ratio (S/N) given various parameters.
