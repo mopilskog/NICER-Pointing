@@ -455,7 +455,10 @@ def write_fits_file(nearby_sources_table, simulation_data, interactive=False) ->
         
         if key =="XMM":
             cat_name = "IAUNAME"
-            
+
+        if key == "merged":
+            cat_name = "iau_name"
+
         max_len = max(len(str(name)) for name in nearby_sources_table[cat_name])
         nearby_sources_table[cat_name] = np.array([str(name).ljust(max_len) for name in nearby_sources_table[cat_name]])
 

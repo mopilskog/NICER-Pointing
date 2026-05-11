@@ -176,8 +176,14 @@ def choose_catalog(args_catalog) -> Tuple[str, str]:
                 return valid_path, args_catalog
             elif args_catalog == "match":
                 return 'matched_catalog', 'match'
+            elif args_catalog == "merged":
+                # Merged mode iterates the priority list internally; no single
+                # FITS path to return. Mirrors the placeholder shape used by
+                # `match` mode.
+                print(colored("merged mode (XMM > Swift > eRASS1 > Chandra)", "yellow"))
+                return 'merged', 'merged'
             else:
-                raise argparse.ArgumentError(None, "invalid catalog keyword keyword. retry with Xmm_DR13, CSC_2.0, Swift, eRASS1, compare_catalog or match.")
+                raise argparse.ArgumentError(None, "invalid catalog keyword keyword. retry with Xmm_DR13, CSC_2.0, Swift, eRASS1, merged, compare_catalog or match.")
         except argparse.ArgumentError as error:
             print(f'An error occured : {error}')
             args_catalog = str(input("Enter a new key word : \n"))

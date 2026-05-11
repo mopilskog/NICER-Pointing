@@ -853,7 +853,34 @@ def main():
         model_dictionary = result.model_dictionary
         column_dictionary = result.column_dictionary
         key = result.key
- 
+
+    elif catalog_name == "merged":
+        # Merged-mode dispatch: orchestrator iterates the priority list
+        # ["XMM", "Swift", "eRASS1", "Chandra"], deduplicates by MS_ID, and
+        # returns a unified table. c_f.modeling() (the per-source band-fit
+        # diagnostic plot) is gated off below for merged mode.
+        simulation_data["os_dictionary"] = {
+            "active_workflow": active_workflow,
+            "catalog_datapath": catalog_datapath,
+            "modeling_file_path": modeling_file_path,
+            "plot_var_sources_path": plot_var_sources_path,
+            "stilts_software_path": stilts_software_path,
+            "topcat_software_path": topcat_software_path,
+        }
+        pipeline = MultiCatalogPipeline(
+            catalogs=["XMM", "Swift", "eRASS1", "Chandra"],
+            simulation_data=simulation_data,
+            radius=radius,
+            user_table=add_source_table,
+            catalog_path=None,
+        )
+        result = pipeline.run()
+        nearby_sources_table = result.nearby_sources_table
+        nearby_sources_position = result.nearby_sources_position
+        model_dictionary = result.model_dictionary
+        column_dictionary = result.column_dictionary
+        key = result.key
+
     elif catalog_name == "match":
         # Find optimal pointing point with using two catalog Xmm and Chandra
         
@@ -991,7 +1018,12 @@ def main():
 
     # --------------- Modeling nearby sources --------------- #
 
-    c_f.modeling(vignetting_factor=vignetting_factor, simulation_data=simulation_data, column_dictionary=column_dictionary, catalog_name=args.catalog)
+    # c_f.modeling re-fits each source's band fluxes for a diagnostic plot. In
+    # merged mode the table mixes sources from catalogs with different band
+    # schemas (XMM has 5 bands, Swift/Chandra 3, eRASS1 4), so this step is
+    # skipped. Single-catalog modes still run it as before.
+    if key != "merged":
+        c_f.modeling(vignetting_factor=vignetting_factor, simulation_data=simulation_data, column_dictionary=column_dictionary, catalog_name=args.catalog)
 
     # ------------------------------------------------------- #
 

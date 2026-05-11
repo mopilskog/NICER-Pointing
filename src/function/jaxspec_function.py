@@ -64,13 +64,19 @@ def cross_catalog_index(output_name: str, key: str, iauname: str, nearby_sources
         - It assumes the master source cone file is in the FITS format and contains a key column that matches the 'key' argument.
     """
     
+    # Merged mode: variability cross-matching is deferred (decision #6). Return
+    # an empty list so modeling_source_spectra populates an empty
+    # total_var_spectra; the spectrum plot no longer uses it after Commit B.
+    if key == "merged":
+        return []
+
     master_source_cone_path = os.path.join(output_name, "Master_source_cone.fits").replace("\\", "/")
     with fits.open(master_source_cone_path) as data:
         master_source_cone = Table(data[1].data)
-    
+
     if key == "CS_Chandra":
         key = "Chandra"
-    
+
     msc_name = [name for name in master_source_cone[key] if name != ""]
     var_index_in_nearby_sources_table = []
     for name in msc_name:
@@ -79,7 +85,7 @@ def cross_catalog_index(output_name: str, key: str, iauname: str, nearby_sources
         if name in nearby_sources_table[iauname]:
             index_in_table = list(nearby_sources_table[iauname]).index(name)
             var_index_in_nearby_sources_table.append(index_in_table)
-            
+
     return var_index_in_nearby_sources_table
 
 def norm_estimation (nearby_sources_table: Table, model, index, key):
@@ -106,6 +112,9 @@ def norm_estimation (nearby_sources_table: Table, model, index, key):
     elif key == "Swift":
         Total_flux = nearby_sources_table["Flux"][index]
         iauname = "Swift_IAUNAME"
+    elif key == "merged":
+        Total_flux = nearby_sources_table["flux"][index]
+        iauname = "iau_name"
 
     target_flux = Total_flux * (u.erg / u.cm**2 / u.s)
 
@@ -166,13 +175,30 @@ def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_i
     for index, vignet_factor in tqdm(enumerate(nearby_sources_table["vignetting_factor"])):
         norm, iauname = norm_estimation(nearby_sources_table, model=model, index=index, key=key)
 
-        pho_idx = nearby_sources_table["Photon Index"][index]
-        pho_idx = pho_idx if pho_idx > 0.0 else 1.7
-        pho_idx_err = nearby_sources_table["Photon Index Error"][index]
-        if pho_idx_err > 0.0:
-            alpha_samples = np.random.normal(pho_idx, pho_idx_err, size)
+        pho_idx = float(nearby_sources_table["Photon Index"][index])
+        pho_idx_err = float(nearby_sources_table["Photon Index Error"][index])
+
+        # Bad fit: when the photon-index uncertainty is large (>2), the
+        # underlying curve_fit didn't converge and the value is unreliable.
+        # Use the catalog-class default (1.7) with no error propagation.
+        if pho_idx_err > 2.0:
+            print(colored(
+                f"  Bad fit for {iauname} (PhI={pho_idx:.3f} ± {pho_idx_err:.3f}); "
+                f"using default alpha=1.7, no sampling.",
+                'yellow'
+            ))
+            alpha_samples = np.full(size, 1.7)
+        elif pho_idx_err > 0.0:
+            # Sample from N(alpha, perr), then floor at 0. A negative alpha
+            # gives a rising spectrum (E^(+|alpha|)) at high energies, which is
+            # unphysical for X-ray power-law sources in 0.3-10 keV.
+            alpha_samples = np.clip(
+                np.random.normal(pho_idx, pho_idx_err, size),
+                a_min=0.0, a_max=None,
+            )
         else:
-            alpha_samples = np.full(size, pho_idx)
+            # No error info available (e.g. failed fit path, user-added source).
+            alpha_samples = np.full(size, pho_idx if pho_idx > 0.0 else 1.7)
 
         parameters = {
             "tbabs_1": {"N_H": np.full(size, nearby_sources_table["Nh"][index]/1e22)},
@@ -248,6 +274,49 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
     for item in range(len(total_spectra)):
         spectrum_summed += total_spectra[item]
 
+    # If we're in merged mode, color sources by origin catalog. Each catalog
+    # gets a hue family; within a family, the lightness varies so sources are
+    # individually distinguishable while their catalog identity is obvious.
+    from matplotlib.colors import hsv_to_rgb
+    from matplotlib.lines import Line2D
+    nearby_table = simulation_data.get("nearby_sources_table")
+    has_origin = (
+        nearby_table is not None
+        and "origin_catalog" in getattr(nearby_table, "colnames", [])
+    )
+    CATALOG_HUES = {
+        "XMM":     0.60,   # blue
+        "Chandra": 0.93,   # pink / magenta
+        "Swift":   0.35,   # green
+        "eRASS1":  0.07,   # orange
+        "user":    0.75,   # purple
+    }
+
+    if has_origin:
+        origins = list(nearby_table["origin_catalog"])
+        iaunames = [str(n).strip() for n in nearby_table["iau_name"]]
+        # Per-source color: hue from catalog, value/saturation varied within
+        # the catalog so sibling sources are distinguishable.
+        source_colors = []
+        cat_running_idx = {}
+        cat_total = {c: origins.count(c) for c in set(origins)}
+        for cat in origins:
+            n = cat_total[cat]
+            i_in_cat = cat_running_idx.get(cat, 0)
+            cat_running_idx[cat] = i_in_cat + 1
+            hue = CATALOG_HUES.get(cat, 0.5)
+            # Spread saturation across [0.35, 0.85] within the catalog.
+            sat = 0.35 + 0.5 * (i_in_cat / max(n - 1, 1))
+            val = 0.95 - 0.15 * (i_in_cat / max(n - 1, 1))
+            source_colors.append(hsv_to_rgb([hue, sat, val]))
+    else:
+        # Single-catalog mode: keep the previous pastel rainbow.
+        n_sources = max(len(total_spectra), 1)
+        hues = np.linspace(0.0, 0.85, n_sources) if n_sources > 1 else np.array([0.0])
+        source_colors = [hsv_to_rgb([h, 0.55, 0.92]) for h in hues]
+        origins = None
+        iaunames = None
+
     # Use scienceplots' "science" style for LaTeX-formatted publication-quality
     # plots. Scoped to this function so other matplotlib output in the project
     # is unaffected.
@@ -262,23 +331,42 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
             ax.set_ylim([graph_data["min_lim_y"], graph_data["max_lim_y"]])
             ax.loglog()
 
-        # Left panel: per-source curve-spaghetti. For each source, every
-        # alpha-sampled realization is drawn with low alpha so the visual
-        # density of overlap conveys the spread arising from the photon-index
-        # fit uncertainty. Colors come from a generated pastel rainbow:
-        # hues spread evenly across [0, 0.85] (avoiding the red wrap-around),
-        # moderate saturation for distinct hues, high value for the pastel
-        # feel. Scales to any source count without color repetition.
+        # Left panel: per-source curve-spaghetti. Every alpha-sampled realization
+        # of each source is drawn with low alpha so visual density conveys the
+        # photon-index uncertainty. In merged mode the color encodes the source's
+        # origin catalog; in single-catalog mode each source gets its own pastel
+        # color from a generated rainbow.
         ax0 = axes[0]
-        from matplotlib.colors import hsv_to_rgb
-        n_sources = max(len(total_spectra), 1)
-        hues = np.linspace(0.0, 0.85, n_sources) if n_sources > 1 else np.array([0.0])
-        pastel_colors = [hsv_to_rgb([h, 0.55, 0.92]) for h in hues]
         for i, spectra in enumerate(total_spectra):
-            color = pastel_colors[i]
+            color = source_colors[i]
             for j in range(spectra.shape[0]):
                 ax0.step(energies, spectra[j, :], where="post", color=color, alpha=0.05)
         ax0.set_title("Spectra from Nearby Sources")
+
+        # Per-source legend with full opacity proxies so the colors are readable
+        # even though the actual curves are drawn at alpha=0.05. In merged mode
+        # the legend is grouped by catalog. With many sources the legend can be
+        # tall; it goes outside the axes on the right so it doesn't obscure data.
+        if has_origin:
+            legend_entries = []
+            # Group sources by catalog in priority order so the legend reads
+            # XMM block, then Swift, eRASS1, Chandra, user.
+            CATALOG_ORDER = ["XMM", "Swift", "eRASS1", "Chandra", "user"]
+            ordered_indices = sorted(
+                range(len(origins)),
+                key=lambda i: (
+                    CATALOG_ORDER.index(origins[i]) if origins[i] in CATALOG_ORDER else 99,
+                    iaunames[i],
+                ),
+            )
+            for i in ordered_indices:
+                label = f"{origins[i]}: {iaunames[i]}"
+                legend_entries.append(Line2D([0], [0], color=source_colors[i], lw=2, label=label))
+            ax0.legend(
+                handles=legend_entries, loc='center left',
+                bbox_to_anchor=(1.02, 0.5), fontsize=6, ncol=1,
+                frameon=False,
+            )
 
         # Right panel: every total summed spectrum drawn as a low-alpha step
         # curve. Width of the cloud reflects the propagated photon-index
@@ -290,8 +378,95 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
 
         key = simulation_data["os_dictionary"]["catalog_key"]
         img_path = os.path.join(os_dictionary['img'], f"{key}_spectral_modeling_close_to_{object_data['object_name']}.png".replace(" ", "_")).replace("\\", "/")
-        plt.savefig(img_path)
+        plt.savefig(img_path, bbox_inches='tight')
         plt.show()
+
+        # Merged-mode only: one plot per source (pink curve-spaghetti) plus a
+        # dedicated sum plot (blue curve-spaghetti). Each per-source plot is
+        # annotated with the source name, the catalog the data came from, and
+        # which catalogs detected the source according to Master_source_cone.
+        if has_origin:
+            per_source_dir = os.path.join(
+                os_dictionary['img'], 'per_source'
+            ).replace("\\", "/")
+            if not os.path.exists(per_source_dir):
+                os.makedirs(per_source_dir)
+
+            # Load master cone to determine which catalogs detected each MS_ID.
+            ms_id_to_detected = {}
+            modeling_file_path = simulation_data["os_dictionary"]["modeling_file_path"]
+            master_cone_path = os.path.join(
+                modeling_file_path, "Pointings", "Master_source_cone.fits"
+            ).replace("\\", "/")
+            if os.path.exists(master_cone_path):
+                with fits.open(master_cone_path, memmap=True) as hdul:
+                    mc = Table(hdul[1].data)
+                for row in mc:
+                    detected = []
+                    for c in CATALOG_ORDER:
+                        if c == "user":
+                            continue
+                        v = str(row[c]).strip() if c in mc.colnames else ""
+                        if v and v != "--":
+                            detected.append(c)
+                    ms_id_to_detected[int(row["MS_ID"])] = detected
+
+            ms_ids = list(nearby_table["MS_ID"])
+
+            # One pink plot per source.
+            for i, spectra in enumerate(total_spectra):
+                fig_s, ax_s = plt.subplots(1, 1, figsize=(8, 6))
+                ax_s.set_xlim([graph_data["min_lim_x"], graph_data["max_lim_x"]])
+                ax_s.set_ylim([graph_data["min_lim_y"], graph_data["max_lim_y"]])
+                ax_s.loglog()
+                for j in range(spectra.shape[0]):
+                    ax_s.step(energies, spectra[j, :], where="post",
+                              color='palevioletred', alpha=0.05)
+                ax_s.set_xlabel("Energy [keV]")
+                ax_s.set_ylabel("Counts")
+
+                ms_id = int(ms_ids[i])
+                detected = ms_id_to_detected.get(ms_id, [])
+                if ms_id == -1 or not detected:
+                    detected_str = f"{origins[i]} (not in Master_source.fits)"
+                else:
+                    detected_str = ", ".join(detected)
+                title = (
+                    f"{iaunames[i]}\n"
+                    f"data from: {origins[i]}  |  detected in: {detected_str}"
+                )
+                ax_s.set_title(title, fontsize=12)
+
+                safe_name = iaunames[i].replace(" ", "_").replace("/", "_")
+                source_img_path = os.path.join(
+                    per_source_dir,
+                    f"{safe_name}.png",
+                ).replace("\\", "/")
+                plt.savefig(source_img_path, bbox_inches='tight')
+                plt.close(fig_s)
+
+            # One blue plot for the total sum.
+            fig_sum, ax_sum = plt.subplots(1, 1, figsize=(8, 6))
+            ax_sum.set_xlim([graph_data["min_lim_x"], graph_data["max_lim_x"]])
+            ax_sum.set_ylim([graph_data["min_lim_y"], graph_data["max_lim_y"]])
+            ax_sum.loglog()
+            for j in range(spectrum_summed.shape[0]):
+                ax_sum.step(energies, spectrum_summed[j, :], where="post",
+                            color='lightsteelblue', alpha=0.05)
+            ax_sum.set_xlabel("Energy [keV]")
+            ax_sum.set_ylabel("Counts")
+            ax_sum.set_title(
+                f"Sum of nearby-source spectra close to {object_data['object_name']}\n"
+                f"({len(total_spectra)} sources from "
+                f"{', '.join(sorted(set(origins)))})",
+                fontsize=12,
+            )
+            sum_img_path = os.path.join(
+                os_dictionary['img'],
+                f"{key}_sum_close_to_{object_data['object_name']}.png".replace(" ", "_"),
+            ).replace("\\", "/")
+            plt.savefig(sum_img_path, bbox_inches='tight')
+            plt.close(fig_sum)
 
     # .txt envelope (used by write_txt_file): median + 16th / 84th percentile
     # of the 100 total summed spectra at each energy bin.
