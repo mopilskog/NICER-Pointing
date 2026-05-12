@@ -304,7 +304,6 @@ def add_source_list(active_workflow,  interactive = False) -> Table:
             print(f"An error occured {error}")
         
     path = str(input("Enter the file path : \n"))
-    path = os.path.join(active_workflow, "catalog_data/add_sources.fits").replace("\\", "/")
     valid_path = get_valid_file_path(path)
     
     with fits.open(valid_path, memmap=True) as data:
