@@ -386,6 +386,315 @@ class MultiCatalogPipeline:
         if src_key in catalog_instance.model_dictionary:
             merged_model_dict[f"src_{merged_idx}"] = catalog_instance.model_dictionary[src_key]
 
+    def _spatial_dedup_pass(self,
+                            merged_rows: List[Dict],
+                            merged_model_dict: Dict,
+                            stats: Dict,
+                            threshold_arcsec: float = 3.0) -> tuple:
+        """Post-merge spatial dedup. After the catalog loop and user-table append,
+        scan pairs of merged rows for separations below ``threshold_arcsec`` and
+        drop the lower-priority row if at least one of the pair is unmatched
+        (MS_ID == -1).
+
+        Two rows with different real MS_IDs are left alone: the master file
+        considers them distinct physical sources by construction, so we trust
+        that even when they sit close on the sky.
+
+        Returns rebuilt (merged_rows, merged_model_dict) with kept rows only;
+        ``stats["spatial_merged"]`` is incremented for each dropped row's
+        origin catalog.
+        """
+        if not merged_rows:
+            return merged_rows, merged_model_dict
+
+        cat_priority = {c: i for i, c in enumerate(self.catalogs)}
+        cat_priority["user"] = 100  # user-added sources are lowest priority
+
+        keep = [True] * len(merged_rows)
+        positions = SkyCoord(
+            ra=np.array([r["RA"] for r in merged_rows]) * u.deg,
+            dec=np.array([r["DEC"] for r in merged_rows]) * u.deg,
+        )
+
+        for i in range(len(merged_rows)):
+            if not keep[i]:
+                continue
+            for j in range(i + 1, len(merged_rows)):
+                if not keep[j]:
+                    continue
+                sep = positions[i].separation(positions[j]).arcsec
+                if sep >= threshold_arcsec:
+                    continue
+                is_un_i = int(merged_rows[i]["MS_ID"]) == -1
+                is_un_j = int(merged_rows[j]["MS_ID"]) == -1
+                if not is_un_i and not is_un_j:
+                    # Both have real MS_IDs (necessarily distinct ones, since
+                    # the loop already dedup'd matching MS_IDs). The master
+                    # file considers them separate physical sources.
+                    continue
+                # At least one is unmatched. Drop the lower-priority row.
+                pi = cat_priority.get(merged_rows[i]["origin_catalog"], 999)
+                pj = cat_priority.get(merged_rows[j]["origin_catalog"], 999)
+                drop_idx = j if pi <= pj else i
+                keep_idx = i if pi <= pj else j
+                dropped = merged_rows[drop_idx]
+                kept = merged_rows[keep_idx]
+                print(colored(
+                    f"  post-merge: {dropped['iau_name']} "
+                    f"({dropped['origin_catalog']}, MS_ID={dropped['MS_ID']}) "
+                    f"folded into {kept['iau_name']} "
+                    f"({kept['origin_catalog']}, MS_ID={kept['MS_ID']}) "
+                    f"at {sep:.2f}\"",
+                    'yellow',
+                ))
+                origin_dropped = dropped["origin_catalog"]
+                if origin_dropped in stats["spatial_merged"]:
+                    stats["spatial_merged"][origin_dropped] += 1
+                # Preserve the fact that this source was also detected by the
+                # dropped row's catalog, even though we're only keeping the
+                # higher-priority row's data. The neighborhood-plot rings and
+                # per-source spectrum-plot annotation use this to show every
+                # catalog that detected the source.
+                kept_extras = merged_rows[keep_idx].setdefault("extra_detections", [])
+                if origin_dropped not in kept_extras:
+                    kept_extras.append(origin_dropped)
+                # Also propagate the dropped row's own extra_detections, in
+                # case it already collected some before being itself folded
+                # (rare with single-pass dedup, but safe).
+                for c in dropped.get("extra_detections", []):
+                    if c not in kept_extras:
+                        kept_extras.append(c)
+                keep[drop_idx] = False
+                if drop_idx == i:
+                    break  # i was dropped; move to next i
+
+        # Rebuild merged_rows and merged_model_dict in order, re-keying src_*.
+        new_rows: List[Dict] = []
+        new_dict: Dict = {}
+        for old_idx, ok in enumerate(keep):
+            if not ok:
+                continue
+            new_idx = len(new_rows)
+            new_rows.append(merged_rows[old_idx])
+            old_key = f"src_{old_idx}"
+            if old_key in merged_model_dict:
+                new_dict[f"src_{new_idx}"] = merged_model_dict[old_key]
+        return new_rows, new_dict
+
+    def _save_merged_neighborhood_plot(self, merged_table: Table) -> None:
+        """Plot every merged source on a single RA/DEC figure, colored by
+        ``origin_catalog``. Same per-catalog hue scheme as the spectrum plot so
+        the two figures can be cross-referenced visually."""
+        import matplotlib.pyplot as plt
+        from matplotlib.colors import hsv_to_rgb
+        from matplotlib.patches import Ellipse
+
+        CATALOG_HUES = {
+            "XMM":     0.60,   # blue
+            "Chandra": 0.93,   # pink / magenta
+            "Swift":   0.35,   # green
+            "eRASS1":  0.07,   # orange
+            "user":    0.75,   # purple
+        }
+
+        object_data = self.simulation_data["object_data"]
+        psr_ra = object_data["object_position"].ra.deg
+        psr_dec = object_data["object_position"].dec.deg
+        radius_deg = self.radius.to(u.deg).value
+
+        # Load master_source_cone so each source can be ringed by every catalog
+        # that detected it (per master), not just its origin catalog.
+        ms_id_to_detected: Dict[int, List[str]] = {}
+        modeling_file_path = self.simulation_data["os_dictionary"]["modeling_file_path"]
+        master_cone_path = os.path.join(
+            modeling_file_path, "Pointings", "Master_source_cone.fits",
+        ).replace("\\", "/")
+        if os.path.exists(master_cone_path):
+            with fits.open(master_cone_path, memmap=True) as hdul:
+                mc = Table(hdul[1].data)
+            cat_columns = ["XMM", "Swift", "eRASS1", "Chandra"]
+            for row in mc:
+                detected = []
+                for c in cat_columns:
+                    if c in mc.colnames:
+                        v = str(row[c]).strip()
+                        if v and v != "--":
+                            detected.append(c)
+                ms_id_to_detected[int(row["MS_ID"])] = detected
+
+        fig, ax = plt.subplots(figsize=(9, 9))
+
+        # Pre-compute per-catalog facecolor once so origin marker and rings stay
+        # consistent.
+        cat_color = {
+            c: hsv_to_rgb([CATALOG_HUES.get(c, 0.5), 0.65, 0.85])
+            for c in ["XMM", "Swift", "eRASS1", "Chandra", "user"]
+        }
+
+        # Origin markers (filled, with the origin catalog's color). One scatter
+        # group per origin catalog so the legend has one entry each.
+        catalog_order = ["XMM", "Swift", "eRASS1", "Chandra", "user"]
+        present = [c for c in catalog_order if c in set(merged_table["origin_catalog"])]
+        for cat in present:
+            ras = [
+                float(merged_table["RA"][i])
+                for i in range(len(merged_table))
+                if str(merged_table["origin_catalog"][i]) == cat
+            ]
+            decs = [
+                float(merged_table["DEC"][i])
+                for i in range(len(merged_table))
+                if str(merged_table["origin_catalog"][i]) == cat
+            ]
+            ax.scatter(
+                ras, decs,
+                s=60, color=cat_color[cat], edgecolor='black', linewidth=0.5,
+                label=f"{cat} (origin): {len(ras)}", alpha=0.85, zorder=4,
+            )
+
+        # Concentric rings: for each merged row, draw an empty circle for every
+        # OTHER catalog that detected this source. Two sources of that info:
+        #   - master_source_cone columns at this MS_ID (for MS_ID != -1)
+        #   - the row's extra_detections column, populated when the post-merge
+        #     spatial dedup folded another catalog's nearby row into this one
+        # Inner marker already shows the origin. Ring sizes grow outward.
+        BASE_SIZE = 60
+        RING_STEP = 80
+        has_extra_col = "extra_detections" in merged_table.colnames
+        for i in range(len(merged_table)):
+            ms_id = int(merged_table["MS_ID"][i])
+            origin = str(merged_table["origin_catalog"][i])
+            detected_by_master = ms_id_to_detected.get(ms_id, []) if ms_id != -1 else []
+            spatial_extras = []
+            if has_extra_col:
+                raw = str(merged_table["extra_detections"][i]).strip()
+                if raw:
+                    spatial_extras = [c for c in raw.split(",") if c]
+            others = []
+            for c in detected_by_master + spatial_extras:
+                if c != origin and c not in others:
+                    others.append(c)
+            if not others:
+                continue
+            ra_i = float(merged_table["RA"][i])
+            dec_i = float(merged_table["DEC"][i])
+            for ring_idx, other_cat in enumerate(others):
+                ring_size = BASE_SIZE + RING_STEP * (ring_idx + 1)
+                ax.scatter(
+                    [ra_i], [dec_i],
+                    s=ring_size,
+                    facecolors='none',
+                    edgecolor=cat_color.get(other_cat, (0.5, 0.5, 0.5)),
+                    linewidth=1.4,
+                    alpha=0.9,
+                    zorder=3 - 0.01 * ring_idx,
+                )
+
+        ax.scatter(
+            [psr_ra], [psr_dec],
+            marker="*", s=350, color="red",
+            edgecolor="black", linewidth=1,
+            label=object_data["object_name"], zorder=5,
+        )
+        # On the sky, "radius in arcmin" is a spherical cap. In RA/DEC degree
+        # space at declination ≠ 0 that's an ellipse, not a circle:
+        # 1 arcmin of RA spans 1/cos(dec) arcmin of true sky distance. So the
+        # cap's RA half-width is radius/cos(dec) while the DEC half-width is
+        # just radius. Drawing a circle would visually under-cover the cap and
+        # make in-FoV sources at high |dec| look as if they're outside.
+        cos_dec = np.cos(np.deg2rad(psr_dec))
+        ax.add_patch(Ellipse(
+            (psr_ra, psr_dec),
+            width=2 * radius_deg / cos_dec,
+            height=2 * radius_deg,
+            fill=False, color="gray", linestyle="--", linewidth=1,
+        ))
+
+        ax.set_xlabel("RA [deg]")
+        ax.set_ylabel("DEC [deg]")
+        ax.set_title(
+            f"Neighbourhood of {object_data['object_name']} "
+            f"(merged catalog, radius = {self.radius.to(u.arcmin).value:.1f}')\n"
+            f"Filled marker = data origin.  Outer ring(s) = also detected in "
+            f"that catalog per Master_source_cone."
+        )
+        ax.legend(loc='upper right', fontsize=9)
+        ax.invert_xaxis()       # RA increases to the left, astronomy convention
+        ax.set_aspect('equal', adjustable='datalim')
+
+        img_dir = self.simulation_data["os_dictionary"]["img"]
+        target_name = object_data["object_name"].replace(" ", "_")
+        out_path = os.path.join(
+            img_dir, f"merged_neighbourhood_of_{target_name}.png"
+        ).replace("\\", "/")
+        plt.savefig(out_path, bbox_inches='tight', dpi=150)
+        plt.close(fig)
+        print(colored(f"Merged neighborhood plot saved: {out_path}", 'green'))
+
+    def _write_manifest(self,
+                        stats: Dict,
+                        merged_rows: List[Dict],
+                        seen_ms_ids: Dict[int, str]) -> None:
+        """Write a readable summary of the merge to ``merged/manifest.txt``.
+
+        Per-catalog: how many sources added (with MS_ID vs unmatched), how many
+        superseded by which catalog. Plus skipped catalogs and the user-source
+        count.
+        """
+        output_dir = self.simulation_data["os_dictionary"]["catalog_directory"]
+        manifest_path = os.path.join(output_dir, "manifest.txt").replace("\\", "/")
+
+        target = self.simulation_data["object_data"]["object_name"]
+        radius_arcmin = self.radius.to(u.arcmin).value
+        n_user = sum(1 for r in merged_rows if r["origin_catalog"] == "user")
+        total_unmatched = sum(stats["added_unmatched"].values())
+
+        lines = []
+        lines.append("Merged-mode manifest")
+        lines.append("=" * 60)
+        lines.append(f"Target:           {target}")
+        lines.append(f"FoV radius:       {radius_arcmin:.1f} arcmin")
+        lines.append(f"Priority order:   {' > '.join(self.catalogs)}")
+        lines.append("")
+        lines.append(f"Final merged table: {len(merged_rows)} sources "
+                     f"({len(seen_ms_ids)} unique MS_IDs + "
+                     f"{total_unmatched} unmatched + {n_user} user)")
+        lines.append("")
+        lines.append("Per-catalog contribution:")
+        for cat in self.catalogs:
+            if cat in stats["skipped_empty"]:
+                lines.append(f"  {cat:<8}: 0 nearby sources found (skipped)")
+                continue
+            added_msid = stats["added_by_msid"][cat]
+            added_un = stats["added_unmatched"][cat]
+            total_added = added_msid + added_un
+            sup_parts = [
+                f"{n} by {by_cat}"
+                for by_cat, n in stats["superseded_by"][cat].items()
+                if n > 0
+            ]
+            sup_str = ", ".join(sup_parts) if sup_parts else "none"
+            spatial_merged = stats["spatial_merged"][cat]
+            spatial_str = (
+                f", spatial-merged: {spatial_merged}"
+                if spatial_merged > 0 else ""
+            )
+            lines.append(
+                f"  {cat:<8}: {total_added:>3} added "
+                f"({added_msid} with MS_ID, {added_un} unmatched), "
+                f"superseded: {sup_str}{spatial_str}"
+            )
+        if n_user > 0:
+            lines.append(f"  {'user':<8}: {n_user:>3} added "
+                         f"(post-merge from add_sources.fits)")
+
+        lines.append("")
+        lines.append(f"Total unmatched (added with MS_ID=-1): {total_unmatched}")
+
+        with open(manifest_path, 'w') as f:
+            f.write("\n".join(lines) + "\n")
+        print(colored(f"Manifest written: {manifest_path}", 'green'))
+
     def _append_user_table(self,
                            merged_rows: List[Dict],
                            merged_model_dict: Dict) -> None:
@@ -511,6 +820,15 @@ class MultiCatalogPipeline:
         merged_model_dict: Dict = {}
         seen_ms_ids: Dict[int, str] = {}  # MS_ID -> first cat_key that contributed it
 
+        # Per-catalog stats accumulated during the loop, used by the manifest.
+        stats: Dict[str, Dict] = {
+            "added_by_msid":   {c: 0 for c in self.catalogs},
+            "added_unmatched": {c: 0 for c in self.catalogs},
+            "superseded_by":   {c: {other: 0 for other in self.catalogs} for c in self.catalogs},
+            "spatial_merged":  {c: 0 for c in self.catalogs},
+            "skipped_empty":   [],
+        }
+
         for cat_key in self.catalogs:
             cfg = CATALOG_REGISTRY[cat_key]
             # Each per-catalog class still wants its own subdirectory for its
@@ -531,6 +849,7 @@ class MultiCatalogPipeline:
                 # call sys.exit() if they find zero nearby sources. Catch that and
                 # move on to the next catalog instead of aborting the merged run.
                 print(colored(f"No nearby sources found in {cat_key}; skipping.", 'yellow'))
+                stats["skipped_empty"].append(cat_key)
                 continue
 
             row_to_ms_id = self._lookup_ms_ids(catalog_instance, cat_key, master_cone)
@@ -540,6 +859,7 @@ class MultiCatalogPipeline:
                     self._add_unmatched_row(
                         merged_rows, merged_model_dict, catalog_instance, cat_key, row_idx
                     )
+                    stats["added_unmatched"][cat_key] += 1
                 elif ms_id in seen_ms_ids:
                     iauname = str(catalog_instance.nearby_sources_table[
                         dict_cat.dictionary_coord[cat_key]["iauname"]
@@ -549,17 +869,26 @@ class MultiCatalogPipeline:
                         f"{seen_ms_ids[ms_id]}",
                         'cyan'
                     ))
+                    stats["superseded_by"][cat_key][seen_ms_ids[ms_id]] += 1
                 else:
                     seen_ms_ids[ms_id] = cat_key
                     self._add_new_row(
                         merged_rows, merged_model_dict, catalog_instance,
                         cat_key, row_idx, ms_id,
                     )
+                    stats["added_by_msid"][cat_key] += 1
 
         # Append user-added sources (if any) post-merge. Per the design they're
         # not run through the per-catalog classes — they're added directly with
         # origin_catalog="user" and don't participate in MS_ID-based dedup.
         self._append_user_table(merged_rows, merged_model_dict)
+
+        # Post-merge spatial dedup: drop unmatched rows that sit within 3" of
+        # another row. Handles cases that the in-loop dedup can't (e.g. a
+        # matched row added after an unmatched row at the same position).
+        merged_rows, merged_model_dict = self._spatial_dedup_pass(
+            merged_rows, merged_model_dict, stats
+        )
 
         if not merged_rows:
             print(colored("No nearby sources retained from any catalog.", 'red'))
@@ -571,11 +900,34 @@ class MultiCatalogPipeline:
         merged_os_dictionary["catalog_key"] = "merged"
         self.simulation_data["os_dictionary"] = merged_os_dictionary
 
+        # Write the manifest now that os_dictionary points back at merged/.
+        self._write_manifest(stats, merged_rows, seen_ms_ids)
+
+        # Save the merged-mode neighborhood plot (all sources, colored by
+        # origin_catalog, with rings showing every catalog that detected each
+        # source via the master cone OR via post-merge spatial folding).
+        plot_cols = ["MS_ID", "origin_catalog", "RA", "DEC", "iau_name"]
+        self._save_merged_neighborhood_plot(Table(
+            {
+                **{name: [r[name] for r in merged_rows] for name in plot_cols},
+                "extra_detections": [",".join(r.get("extra_detections", [])) for r in merged_rows],
+            },
+            names=plot_cols + ["extra_detections"],
+        ))
+
         column_names = [
             "MS_ID", "origin_catalog", "RA", "DEC", "iau_name",
             "Photon Index", "Photon Index Error", "Nh", "flux",
+            "extra_detections",
         ]
-        column_data = {name: [r[name] for r in merged_rows] for name in column_names}
+        column_data = {
+            name: (
+                [",".join(r.get("extra_detections", [])) for r in merged_rows]
+                if name == "extra_detections"
+                else [r[name] for r in merged_rows]
+            )
+            for name in column_names
+        }
         merged_table = Table(column_data, names=column_names)
         merged_position = SkyCoord(
             ra=merged_table["RA"], dec=merged_table["DEC"], unit=u.deg,

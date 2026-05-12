@@ -373,7 +373,7 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
         # uncertainty.
         ax1 = axes[1]
         for j in range(spectrum_summed.shape[0]):
-            ax1.step(energies, spectrum_summed[j, :], where="post", color='lightsteelblue', alpha=0.05)
+            ax1.step(energies, spectrum_summed[j, :], where="post", color='cornflowerblue', alpha=0.05)
         ax1.set_title("Sum of spectra")
 
         key = simulation_data["os_dictionary"]["catalog_key"]
@@ -426,11 +426,24 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
                 ax_s.set_ylabel("Counts")
 
                 ms_id = int(ms_ids[i])
-                detected = ms_id_to_detected.get(ms_id, [])
-                if ms_id == -1 or not detected:
+                detected = list(ms_id_to_detected.get(ms_id, []))
+                # Also fold in any catalogs the post-merge spatial dedup attached
+                # to this row (e.g. an unmatched XMM detection that got folded
+                # into this Chandra-origin row).
+                if "extra_detections" in nearby_table.colnames:
+                    raw_extra = str(nearby_table["extra_detections"][i]).strip()
+                    if raw_extra:
+                        for c in raw_extra.split(","):
+                            if c and c not in detected:
+                                detected.append(c)
+                if ms_id == -1 and not detected:
                     detected_str = f"{origins[i]} (not in Master_source.fits)"
+                elif not detected:
+                    detected_str = origins[i]
                 else:
-                    detected_str = ", ".join(detected)
+                    # Ensure origin is listed first, then the others.
+                    ordered = [origins[i]] + [c for c in detected if c != origins[i]]
+                    detected_str = ", ".join(ordered)
                 title = (
                     f"{iaunames[i]}\n"
                     f"data from: {origins[i]}  |  detected in: {detected_str}"
@@ -452,13 +465,13 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
             ax_sum.loglog()
             for j in range(spectrum_summed.shape[0]):
                 ax_sum.step(energies, spectrum_summed[j, :], where="post",
-                            color='lightsteelblue', alpha=0.05)
+                            color='cornflowerblue', alpha=0.05)
             ax_sum.set_xlabel("Energy [keV]")
             ax_sum.set_ylabel("Counts")
             ax_sum.set_title(
                 f"Sum of nearby-source spectra close to {object_data['object_name']}\n"
                 f"({len(total_spectra)} sources from "
-                f"{', '.join(sorted(set(origins)))})",
+                f"{', '.join(sorted(set(origins), key=lambda c: CATALOG_ORDER.index(c) if c in CATALOG_ORDER else 99))})",
                 fontsize=12,
             )
             sum_img_path = os.path.join(
