@@ -90,13 +90,16 @@ def cross_catalog_index(output_name: str, key: str, iauname: str, nearby_sources
 
 def norm_estimation (nearby_sources_table: Table, model, index, key):
     norm = 1e-5
+    # jaxspec >= 0.2 uses flat parameter dicts keyed as "<component>_<param>"
+    # instead of the nested {"component": {"param": value}} format.
     param = {
-            "tbabs_1": {"N_H": nearby_sources_table["Nh"][index]/1e22},
-            "powerlaw_1": {
-                "alpha": nearby_sources_table["Photon Index"][index] if nearby_sources_table["Photon Index"][index] > 0.0 else 1.7,
-                "norm": norm,
-            }
-        }
+        "tbabs_1_nh": nearby_sources_table["Nh"][index] / 1e22,
+        "powerlaw_1_alpha": (
+            nearby_sources_table["Photon Index"][index]
+            if nearby_sources_table["Photon Index"][index] > 0.0 else 1.7
+        ),
+        "powerlaw_1_norm": norm,
+    }
     if key == "Chandra":
         Total_flux = nearby_sources_table["flux_aper_b"][index]
         iauname = "Chandra_IAUNAME"
@@ -133,11 +136,11 @@ def norm_estimation (nearby_sources_table: Table, model, index, key):
 
         # Check if the computed flux is close enough to the target flux
         if np.abs(flux_difference) < tolerance:
-            #print(f"Matching flux found with norm: {param['powerlaw_1']['norm']} at iteration {iteration}")
+            #print(f"Matching flux found with norm: {param['powerlaw_1_norm']} at iteration {iteration}")
             break
         #learning_rate = 1.0e9 * (flux_difference / target_flux).value * (u.cm**2 * u.s) / u.erg
         norm = norm + flux_difference * learning_rate
-        param['powerlaw_1']['norm'] = norm
+        param['powerlaw_1_norm'] = norm
     source = nearby_sources_table[iauname][index]
     return norm, iauname
 
@@ -199,15 +202,14 @@ def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_i
             # No error info available (e.g. failed fit path, user-added source).
             alpha_samples = np.full(size, pho_idx if pho_idx > 0.0 else 1.7)
 
+        # jaxspec >= 0.2 expects flat parameter dicts keyed "<component>_<param>".
         parameters = {
-            "tbabs_1": {"N_H": np.full(size, nearby_sources_table["Nh"][index]/1e22)},
-            "powerlaw_1": {
-                "alpha": alpha_samples,
-                "norm": np.full(size, norm),
-            }
+            "tbabs_1_nh": np.full(size, nearby_sources_table["Nh"][index] / 1e22),
+            "powerlaw_1_alpha": alpha_samples,
+            "powerlaw_1_norm": np.full(size, norm),
         }
 
-        spectra = fakeit_for_multiple_parameters(instrument=obsconfig, model=model, parameters=parameters) * vignet_factor
+        spectra = fakeit_for_multiple_parameters(obsconfig, model, parameters) * vignet_factor
 
         if index in var_index:
             total_var_spectra.append(spectra)
