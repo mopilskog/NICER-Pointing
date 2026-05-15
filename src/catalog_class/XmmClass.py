@@ -357,7 +357,6 @@ class XmmCatalog:
         try:
             popt, pcov = curve_fit(absorbed_power_law, energy_band, y_array, sigma=yerr_array)
             constant, absorb_pho_index = popt
-            print(f" (Source: Curve fit) - "f"pho_index: {absorb_pho_index}")
             perr = np.sqrt(np.diag(pcov))
             absorb_random = np.random.normal(absorb_pho_index, perr[1])
             #perr will have 2 values one associated with the const and another with the absorb_pho_index
@@ -367,7 +366,6 @@ class XmmCatalog:
             absorb_pho_index = 1.7
             popt = constant, absorb_pho_index
             perr = 0.0
-            print(f" (Source: constant) - "f"pho_index: {absorb_pho_index}")
 
         optimization_parameters = (energy_band, y_array, yerr_array, absorbed_power_law(energy_band, *popt))
         #return optimization_parameters, absorb_pho_index, perr[1]
@@ -487,8 +485,6 @@ class XmmCatalog:
     
 
         for number in range(len(name_list)):
-            print("---------------------------------------------------------")
-            print(f"NAME : {name_list[number]}")
             i = 0
             if i == 1:
             #if index_table["Index in x2a"][number] != "No data found":
@@ -529,10 +525,7 @@ class XmmCatalog:
                 column_nh = np.append(column_nh, nhi_value)
                 column_nh_min = np.append(column_nh_min, nhi_value)
                 column_nh_max = np.append(column_nh_max, nhi_value)
-                
-                print(f"Nh values(Source: Nh sky map) - Nh: {nhi_value}, "
-                    f"Nh min: {nhi_value}, Nh max: {nhi_value}")
-                
+
                 parameters, pho_value, perr = self.optim_index(number)
                 optimization_parameters.append(parameters)
 
@@ -545,9 +538,6 @@ class XmmCatalog:
                 pho_index_max_med = np.append(pho_index_max_med, pho_value_max)
                 pho_index_min_med = np.append(pho_index_min_med, pho_value_min)
 
-                print(f"Photon Index values (Source: Optimized value) - "
-                    f"pho_index: {pho_value}, pho_index min: {pho_value_min}, pho_index max: {pho_value_max}")
-                  
         index_add_source = []
         if len(name_list) != len(self.nearby_sources_table):
             for name in self.nearby_sources_table["IAUNAME"]:
@@ -567,9 +557,7 @@ class XmmCatalog:
             column_nh = np.append(column_nh, nhi_value)
             column_nh_min = np.append(column_nh_min, nhi_value)
             column_nh_max = np.append(column_nh_max, nhi_value)
-            print(f"Nh values(Source: Nh sky map) - Nh: {nhi_value}, "
-                    f"Nh min: {nhi_value}, Nh max: {nhi_value}")
-                
+
             parameters, pho_value, perr = self.optim_index(index)
             optimization_parameters.append(parameters)
 
@@ -580,8 +568,6 @@ class XmmCatalog:
             pho_index_max_med = np.append(pho_index_max_med, pho_value_max)
             column_phoindex = np.append(column_phoindex, pho_value)
             column_phoindex_err = np.append(column_phoindex_err, perr)
-            print(f"Photon Index values (Source: Optimized value) - "
-                    f"pho_index: {pho_value}, pho_index min: {pho_value_min}, pho_index max: {pho_value_max}")
 
         self.visualization_interp(optimization_parameters=optimization_parameters, photon_index=photon_index)
 

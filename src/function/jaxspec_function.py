@@ -139,7 +139,6 @@ def norm_estimation (nearby_sources_table: Table, model, index, key):
         norm = norm + flux_difference * learning_rate
         param['powerlaw_1']['norm'] = norm
     source = nearby_sources_table[iauname][index]
-    print(f"Found norm for {source} : {norm}")
     return norm, iauname
 
 def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_index, key) -> List:
@@ -263,8 +262,16 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
     
     object_data = simulation_data["object_data"]
     os_dictionary = simulation_data["os_dictionary"]
-    graph_data = {"min_lim_x": 0.2, "max_lim_x": 10.0,
-                  "min_lim_y": 5e-3, "max_lim_y": 3e5}
+    # X-axis spans the full simulated range. The jaxspec simulation runs over
+    # NICER's RMF EBOUNDS (~0.01-15 keV), so capping the display short of 15
+    # would just hide existing data. Lower bound 0.2 keV trims the noise floor
+    # below NICER's documented sensitive band.
+    # X-axis spans the same range used in the master thesis (0.3-20 keV) so
+    # the new pipeline outputs are directly comparable to the thesis figures.
+    # The jaxspec simulation itself runs across NICER's RMF EBOUNDS
+    # (~0.01-15 keV); above 15 keV the data is implicit zero.
+    graph_data = {"min_lim_x": 0.3, "max_lim_x": 2e1,
+                  "min_lim_y": 5e-3, "max_lim_y": 1e4}
 
     energies = obsconfig.out_energies[0]
 
@@ -274,53 +281,38 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
     for item in range(len(total_spectra)):
         spectrum_summed += total_spectra[item]
 
-    # If we're in merged mode, color sources by origin catalog. Each catalog
-    # gets a hue family; within a family, the lightness varies so sources are
-    # individually distinguishable while their catalog identity is obvious.
-    from matplotlib.colors import hsv_to_rgb
+    # Source colors come from matplotlib's tab20 + tab20b + tab20c qualitative
+    # palettes interleaved — 60 perceptually distinct colors with strong
+    # contrast between adjacent source indices (the interleave alternates
+    # between three palette families). Cycles for >60 sources. Catalog
+    # identity is conveyed by the legend label and per-source plot title;
+    # neighborhood-plot rings still use the per-catalog hue scheme.
     from matplotlib.lines import Line2D
+    import matplotlib.cm as mcm
     nearby_table = simulation_data.get("nearby_sources_table")
     has_origin = (
         nearby_table is not None
         and "origin_catalog" in getattr(nearby_table, "colnames", [])
     )
-    CATALOG_HUES = {
-        "XMM":     0.60,   # blue
-        "Chandra": 0.93,   # pink / magenta
-        "Swift":   0.35,   # green
-        "eRASS1":  0.07,   # orange
-        "user":    0.75,   # purple
-    }
+
+    n_sources = max(len(total_spectra), 1)
+    t20 = list(mcm.get_cmap("tab20").colors)
+    t20b = list(mcm.get_cmap("tab20b").colors)
+    t20c = list(mcm.get_cmap("tab20c").colors)
+    palette = [c for triple in zip(t20, t20b, t20c) for c in triple]  # 60 colors
+    source_colors = [palette[i % len(palette)] for i in range(n_sources)]
 
     if has_origin:
         origins = list(nearby_table["origin_catalog"])
         iaunames = [str(n).strip() for n in nearby_table["iau_name"]]
-        # Per-source color: hue from catalog, value/saturation varied within
-        # the catalog so sibling sources are distinguishable.
-        source_colors = []
-        cat_running_idx = {}
-        cat_total = {c: origins.count(c) for c in set(origins)}
-        for cat in origins:
-            n = cat_total[cat]
-            i_in_cat = cat_running_idx.get(cat, 0)
-            cat_running_idx[cat] = i_in_cat + 1
-            hue = CATALOG_HUES.get(cat, 0.5)
-            # Spread saturation across [0.35, 0.85] within the catalog.
-            sat = 0.35 + 0.5 * (i_in_cat / max(n - 1, 1))
-            val = 0.95 - 0.15 * (i_in_cat / max(n - 1, 1))
-            source_colors.append(hsv_to_rgb([hue, sat, val]))
     else:
-        # Single-catalog mode: keep the previous pastel rainbow.
-        n_sources = max(len(total_spectra), 1)
-        hues = np.linspace(0.0, 0.85, n_sources) if n_sources > 1 else np.array([0.0])
-        source_colors = [hsv_to_rgb([h, 0.55, 0.92]) for h in hues]
         origins = None
         iaunames = None
 
     # Use scienceplots' "science" style for LaTeX-formatted publication-quality
     # plots. Scoped to this function so other matplotlib output in the project
     # is unaffected.
-    with plt.style.context(['science']):
+    with plt.style.context(['science', 'retro']):
         figure_1, axes = plt.subplots(1, 2, figsize=(14, 7), sharey=True)
         figure_1.suptitle(f"Spectral modeling close to {object_data['object_name']}\ncatalog : {catalog_name}", fontsize=20)
         figure_1.text(0.5, 0.04, 'Energy [keV]', ha='center', va='center', fontsize=16)
@@ -331,50 +323,78 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
             ax.set_ylim([graph_data["min_lim_y"], graph_data["max_lim_y"]])
             ax.loglog()
 
-        # Left panel: per-source curve-spaghetti. Every alpha-sampled realization
-        # of each source is drawn with low alpha so visual density conveys the
-        # photon-index uncertainty. In merged mode the color encodes the source's
-        # origin catalog; in single-catalog mode each source gets its own pastel
-        # color from a generated rainbow.
+        # Left panel: only the N brightest sources drawn individually (each as
+        # median + 16-84% band), with all other sources summed into one
+        # auxiliary curve. Prevents over-crowding at 50+ sources while keeping
+        # the dominant contributors visible. Sorting is by post-vignetting
+        # count_rate (already on nearby_table after c_f.count_rates ran).
+        # Colors here use a pastel rainbow generated independently of the
+        # tab20-family per-source palette; the latter is still used elsewhere.
         ax0 = axes[0]
-        for i, spectra in enumerate(total_spectra):
-            color = source_colors[i]
-            for j in range(spectra.shape[0]):
-                ax0.step(energies, spectra[j, :], where="post", color=color, alpha=0.05)
-        ax0.set_title("Spectra from Nearby Sources")
+        N_BRIGHTEST = 5
+        CATALOG_ORDER = ["XMM", "Swift", "eRASS1", "Chandra", "user"]
+        from matplotlib.colors import hsv_to_rgb
+        count_rates_arr = np.array([
+            float(nearby_table["count_rate"][i]) for i in range(len(total_spectra))
+        ])
+        order = np.argsort(-count_rates_arr)
+        brightest_idx = list(order[:N_BRIGHTEST])
+        other_idx = list(order[N_BRIGHTEST:])
 
-        # Per-source legend with full opacity proxies so the colors are readable
-        # even though the actual curves are drawn at alpha=0.05. In merged mode
-        # the legend is grouped by catalog. With many sources the legend can be
-        # tall; it goes outside the axes on the right so it doesn't obscure data.
-        if has_origin:
-            legend_entries = []
-            # Group sources by catalog in priority order so the legend reads
-            # XMM block, then Swift, eRASS1, Chandra, user.
-            CATALOG_ORDER = ["XMM", "Swift", "eRASS1", "Chandra", "user"]
-            ordered_indices = sorted(
-                range(len(origins)),
-                key=lambda i: (
-                    CATALOG_ORDER.index(origins[i]) if origins[i] in CATALOG_ORDER else 99,
-                    iaunames[i],
-                ),
+        # Top-N brightest sources use matplotlib's Pastel2 qualitative colormap
+        # — 8 distinct pastel hues. Cycles for n_top > 8.
+        pastel2 = list(plt.get_cmap("Pastel2").colors)
+        brightest_colors = [
+            pastel2[r % len(pastel2)]
+            for r in range(len(brightest_idx))
+        ]
+
+        for rank, i in enumerate(brightest_idx):
+            spectra = total_spectra[i]
+            median = np.median(spectra, axis=0)
+            p16 = np.percentile(spectra, 16, axis=0)
+            p84 = np.percentile(spectra, 84, axis=0)
+            color = brightest_colors[rank]
+            label = (
+                f"{origins[i]}: {iaunames[i]}" if has_origin
+                else (iaunames[i] if iaunames else f"source {i}")
             )
-            for i in ordered_indices:
-                label = f"{origins[i]}: {iaunames[i]}"
-                legend_entries.append(Line2D([0], [0], color=source_colors[i], lw=2, label=label))
-            ax0.legend(
-                handles=legend_entries, loc='center left',
-                bbox_to_anchor=(1.02, 0.5), fontsize=6, ncol=1,
-                frameon=False,
+            ax0.fill_between(energies, p16, p84, step="post", color=color, alpha=0.40)
+            ax0.step(energies, median, where="post", color=color, lw=1.5, label=label)
+
+        if other_idx:
+            others_summed = 0
+            for i in other_idx:
+                others_summed = others_summed + total_spectra[i]
+            om = np.median(others_summed, axis=0)
+            o16 = np.percentile(others_summed, 16, axis=0)
+            o84 = np.percentile(others_summed, 84, axis=0)
+            ax0.fill_between(energies, o16, o84, step="post", color='lightcoral', alpha=0.40)
+            ax0.step(
+                energies, om, where="post", color='lightcoral', lw=1.5,
+                label=f"sum of {len(other_idx)} remaining sources",
             )
 
-        # Right panel: every total summed spectrum drawn as a low-alpha step
-        # curve. Width of the cloud reflects the propagated photon-index
-        # uncertainty.
+        ax0.set_title(f"Top {min(N_BRIGHTEST, len(total_spectra))} brightest + remaining sum")
+        ax0.legend(loc='upper right', fontsize=8)
+
+        # Right panel: total summed spectrum as median + 16-84% band. Same
+        # color scheme as the per-source plots so the figures are visually
+        # consistent.
         ax1 = axes[1]
-        for j in range(spectrum_summed.shape[0]):
-            ax1.step(energies, spectrum_summed[j, :], where="post", color='cornflowerblue', alpha=0.05)
-        ax1.set_title("Sum of spectra")
+        sum_median = np.median(spectrum_summed, axis=0)
+        sum_p16 = np.percentile(spectrum_summed, 16, axis=0)
+        sum_p84 = np.percentile(spectrum_summed, 84, axis=0)
+        ax1.fill_between(
+            energies, sum_p16, sum_p84, step="post",
+            color='lightskyblue', alpha=0.4, label="16-84% envelope",
+        )
+        ax1.step(
+            energies, sum_median, where="post",
+            color='steelblue', linewidth=1.3, label="median",
+        )
+        ax1.set_title("Sum of all source spectra")
+        ax1.legend(loc='upper right', fontsize=9)
 
         key = simulation_data["os_dictionary"]["catalog_key"]
         img_path = os.path.join(os_dictionary['img'], f"{key}_spectral_modeling_close_to_{object_data['object_name']}.png".replace(" ", "_")).replace("\\", "/")
@@ -419,11 +439,25 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
                 ax_s.set_xlim([graph_data["min_lim_x"], graph_data["max_lim_x"]])
                 ax_s.set_ylim([graph_data["min_lim_y"], graph_data["max_lim_y"]])
                 ax_s.loglog()
-                for j in range(spectra.shape[0]):
-                    ax_s.step(energies, spectra[j, :], where="post",
-                              color='palevioletred', alpha=0.05)
+                # Median + 16-84% percentile band across the photon-index
+                # samples for this source. Cleaner than per-curve spaghetti at
+                # this scale and conveys the same uncertainty information.
+                median = np.median(spectra, axis=0)
+                p16 = np.percentile(spectra, 16, axis=0)
+                p84 = np.percentile(spectra, 84, axis=0)
+                ax_s.fill_between(
+                    energies, p16, p84, step="post",
+                    color='lightskyblue', alpha=0.4,
+                    label="16-84% envelope",
+                )
+                ax_s.step(
+                    energies, median, where="post",
+                    color='steelblue', linewidth=1.3,
+                    label="median",
+                )
                 ax_s.set_xlabel("Energy [keV]")
                 ax_s.set_ylabel("Counts")
+                ax_s.legend(loc='upper right', fontsize=9)
 
                 ms_id = int(ms_ids[i])
                 detected = list(ms_id_to_detected.get(ms_id, []))
@@ -458,16 +492,26 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
                 plt.savefig(source_img_path, bbox_inches='tight')
                 plt.close(fig_s)
 
-            # One blue plot for the total sum.
+            # Standalone total-sum plot. Median + 16-84% band — same colors as
+            # the per-source plots so the figures are visually consistent.
             fig_sum, ax_sum = plt.subplots(1, 1, figsize=(8, 6))
             ax_sum.set_xlim([graph_data["min_lim_x"], graph_data["max_lim_x"]])
             ax_sum.set_ylim([graph_data["min_lim_y"], graph_data["max_lim_y"]])
             ax_sum.loglog()
-            for j in range(spectrum_summed.shape[0]):
-                ax_sum.step(energies, spectrum_summed[j, :], where="post",
-                            color='cornflowerblue', alpha=0.05)
+            sum_median_s = np.median(spectrum_summed, axis=0)
+            sum_p16_s = np.percentile(spectrum_summed, 16, axis=0)
+            sum_p84_s = np.percentile(spectrum_summed, 84, axis=0)
+            ax_sum.fill_between(
+                energies, sum_p16_s, sum_p84_s, step="post",
+                color='lightskyblue', alpha=0.4, label="16-84% envelope",
+            )
+            ax_sum.step(
+                energies, sum_median_s, where="post",
+                color='steelblue', linewidth=1.3, label="median",
+            )
             ax_sum.set_xlabel("Energy [keV]")
             ax_sum.set_ylabel("Counts")
+            ax_sum.legend(loc='upper right', fontsize=9)
             ax_sum.set_title(
                 f"Sum of nearby-source spectra close to {object_data['object_name']}\n"
                 f"({len(total_spectra)} sources from "
@@ -480,6 +524,92 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
             ).replace("\\", "/")
             plt.savefig(sum_img_path, bbox_inches='tight')
             plt.close(fig_sum)
+
+            # Per-catalog vs total summed spectra. Two panels: left shows each
+            # origin catalog's collective spectrum (median + 16-84% band) using
+            # matplotlib's Pastel2 qualitative colormap; right shows the total
+            # summed spectrum in the same blue used elsewhere for the FoV
+            # total. Pastel2 indices in use:
+            #   0=green, 1=peach/orange, 2=blue, 3=pink, 5=yellow
+            pastel2 = list(plt.get_cmap("Pastel2").colors)
+            CATALOG_PASTEL2_COLOR = {
+                "XMM":     pastel2[0],  # pale green
+                "Chandra": pastel2[3],  # pale pink
+                "Swift":   pastel2[2],  # pale blue
+                "eRASS1":  pastel2[1],  # pale peach / orange
+                "user":    pastel2[5],  # pale yellow
+            }
+            unique_origins_ordered = [
+                c for c in CATALOG_ORDER if c in set(origins)
+            ]
+
+            fig_cat, cat_axes = plt.subplots(1, 2, figsize=(14, 7), sharey=True)
+            fig_cat.suptitle(
+                f"Per-catalog and total summed spectra close to "
+                f"{object_data['object_name']}",
+                fontsize=18,
+            )
+            fig_cat.text(0.5, 0.04, 'Energy [keV]', ha='center', va='center', fontsize=14)
+            fig_cat.text(0.085, 0.5, 'Counts', ha='center', va='center',
+                         rotation='vertical', fontsize=14)
+            for ax in cat_axes:
+                ax.set_xlim([graph_data["min_lim_x"], graph_data["max_lim_x"]])
+                ax.set_ylim([graph_data["min_lim_y"], graph_data["max_lim_y"]])
+                ax.loglog()
+
+            cat_ax_left = cat_axes[0]
+            for cat in unique_origins_ordered:
+                cat_indices = [i for i, o in enumerate(origins) if o == cat]
+                if not cat_indices:
+                    continue
+                cat_summed = 0
+                for i in cat_indices:
+                    cat_summed = cat_summed + total_spectra[i]
+                cm = np.median(cat_summed, axis=0)
+                c16 = np.percentile(cat_summed, 16, axis=0)
+                c84 = np.percentile(cat_summed, 84, axis=0)
+                color = CATALOG_PASTEL2_COLOR.get(cat, pastel2[0])
+                cat_ax_left.fill_between(
+                    energies, c16, c84, step="post",
+                    color=color, alpha=0.40,
+                )
+                cat_ax_left.step(
+                    energies, cm, where="post",
+                    color=color, linewidth=1.5,
+                    label=f"{cat} ({len(cat_indices)} sources)",
+                )
+            cat_ax_left.set_title("Sum per origin catalog")
+            cat_ax_left.legend(
+                loc='upper right', fontsize=9,
+                title="median + 16-84% envelope",
+                title_fontsize=8,
+            )
+
+            # Right panel: total summed spectrum in lightskyblue / steelblue,
+            # matching the right-panel style of the merged spectra plot.
+            cat_ax_right = cat_axes[1]
+            tm = np.median(spectrum_summed, axis=0)
+            t16 = np.percentile(spectrum_summed, 16, axis=0)
+            t84 = np.percentile(spectrum_summed, 84, axis=0)
+            cat_ax_right.fill_between(
+                energies, t16, t84, step="post",
+                color='lightskyblue', alpha=0.4,
+                label="16-84% envelope",
+            )
+            cat_ax_right.step(
+                energies, tm, where="post",
+                color='steelblue', linewidth=1.3,
+                label="median",
+            )
+            cat_ax_right.set_title("Total summed spectrum")
+            cat_ax_right.legend(loc='upper right', fontsize=9)
+
+            cat_img_path = os.path.join(
+                os_dictionary['img'],
+                f"{key}_per_catalog_sum_close_to_{object_data['object_name']}.png".replace(" ", "_"),
+            ).replace("\\", "/")
+            plt.savefig(cat_img_path, bbox_inches='tight')
+            plt.close(fig_cat)
 
     # .txt envelope (used by write_txt_file): median + 16th / 84th percentile
     # of the 100 total summed spectra at each energy bin.

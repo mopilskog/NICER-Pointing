@@ -829,6 +829,17 @@ class MultiCatalogPipeline:
             "skipped_empty":   [],
         }
 
+        # Suppress per-catalog plot popups during the merged-mode catalog loop.
+        # Each per-catalog class still SAVES its neighborhood plot to its own
+        # subdirectory via plt.savefig(...), which we want; only the plt.show()
+        # calls that open separate windows are silenced. The original is
+        # restored in the finally clause so other plotting paths are unaffected.
+        # To opt back in, set self.show_individual_plots = True before run().
+        import matplotlib.pyplot as plt
+        _original_show = plt.show
+        if not getattr(self, "show_individual_plots", False):
+            plt.show = lambda *a, **kw: None
+
         for cat_key in self.catalogs:
             cfg = CATALOG_REGISTRY[cat_key]
             # Each per-catalog class still wants its own subdirectory for its
@@ -877,6 +888,12 @@ class MultiCatalogPipeline:
                         cat_key, row_idx, ms_id,
                     )
                     stats["added_by_msid"][cat_key] += 1
+
+        # Restore plt.show now that the per-catalog popups are no longer a risk.
+        # The downstream merged-mode plots (spectrum, neighborhood, etc.) still
+        # need to display normally.
+        plt.show = _original_show
+        plt.close('all')  # close any figures the catalog classes left open
 
         # Append user-added sources (if any) post-merge. Per the design they're
         # not run through the per-catalog classes — they're added directly with
