@@ -808,6 +808,46 @@ class MultiCatalogPipeline:
         # in MS_ID-based deduplication, so multiple unmatched rows don't collide.
         self._add_new_row(merged_rows, merged_model_dict, catalog_instance, cat_key, row_idx, ms_id=-1)
 
+    def _attach_variability_info(self, merged_rows: List[Dict]) -> None:
+        """Populate each merged row with (var_ratio, flux_min, flux_max).
+
+        For rows with a real MS_ID, the values come from the MasterSource record
+        loaded from Master_source_cone + per-catalog FITS in the Pointings/
+        directory. ``var_ratio = max_lower / min_upper`` (>1 means variability
+        detected beyond per-observation errors); ``flux_min`` / ``flux_max`` are
+        the raw observed extrema across all detections of that master source.
+
+        For unmatched rows (MS_ID == -1) and user-added rows, no master-source
+        record exists, so var_ratio defaults to 1.0 and the flux extrema collapse
+        to the row's own nominal flux (i.e. no variability bracketing).
+        """
+        # Lazy import to avoid a circular dependency between this module and
+        # function/software_function.py (which imports a sibling catalog_class).
+        from function.software_function import load_master_sources
+
+        print(colored(
+            "\nLoading master sources for variability info...",
+            'yellow', attrs=['underline'],
+        ))
+        master_sources = load_master_sources(self._pointings_path())
+
+        for row in merged_rows:
+            ms_id = int(row["MS_ID"])
+            ms = master_sources.get(ms_id) if ms_id != -1 else None
+            if (
+                ms is not None
+                and len(ms.sources_flux) > 0
+                and not np.isnan(ms.sources_flux).all()
+            ):
+                valid = ms.sources_flux[~np.isnan(ms.sources_flux)]
+                row["var_ratio"] = float(ms.var_ratio)
+                row["flux_min"] = float(np.min(valid))
+                row["flux_max"] = float(np.max(valid))
+            else:
+                row["var_ratio"] = 1.0
+                row["flux_min"] = float(row["flux"])
+                row["flux_max"] = float(row["flux"])
+
     def _run_merged(self) -> PipelineResult:
         """Iterate the priority list, instantiate each catalog class, deduplicate
         rows by MS_ID (higher-priority catalog wins), and produce a unified table
@@ -911,6 +951,13 @@ class MultiCatalogPipeline:
             print(colored("No nearby sources retained from any catalog.", 'red'))
             sys.exit()
 
+        # Look up variability info per merged source from MasterSource records.
+        # var_ratio > 1 means the (max_lower / min_upper) test in MasterSource
+        # found inter-observation flux change beyond errors; flux_min/flux_max
+        # are the raw observed extrema and bracket the historical flux range
+        # used by total_plot_spectra to scale the spectrum's lower/upper bounds.
+        self._attach_variability_info(merged_rows)
+
         # Restore the merged os_dictionary for downstream code (write_fits_file,
         # total_plot_spectra, ...). The per-catalog os_dictionaries left in place
         # by the loop are no longer relevant — outputs go under merged/.
@@ -935,6 +982,7 @@ class MultiCatalogPipeline:
         column_names = [
             "MS_ID", "origin_catalog", "RA", "DEC", "iau_name",
             "Photon Index", "Photon Index Error", "Nh", "flux",
+            "var_ratio", "flux_min", "flux_max",
             "extra_detections",
         ]
         column_data = {

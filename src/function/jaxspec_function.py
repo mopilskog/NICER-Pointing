@@ -283,6 +283,45 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
     for item in range(len(total_spectra)):
         spectrum_summed += total_spectra[item]
 
+    # Variability bracketing (merged mode only). When the nearby table carries
+    # var_ratio/flux_min/flux_max columns (added by MultiCatalogPipeline from
+    # the MasterSource records), build per-source linear scaling ratios so the
+    # nominal spectrum can be rescaled to the source's observed flux extrema.
+    # Spectra scale linearly with norm at fixed alpha/Nh, so multiplying the
+    # nominal spectrum by (flux_min / flux) and (flux_max / flux) gives the
+    # min- and max-state forward-folded spectra without re-running fakeit.
+    # var_ratio > 1 ↔ MasterSource detected variability beyond per-observation
+    # errors. Sources with var_ratio == 1 (single observation or no significant
+    # variability) collapse to ratio_lower == ratio_upper == 1.
+    nearby_table_var = simulation_data.get("nearby_sources_table")
+    has_var_info = (
+        nearby_table_var is not None
+        and {"var_ratio", "flux_min", "flux_max", "flux"}
+            <= set(getattr(nearby_table_var, "colnames", []))
+    )
+    var_flags = [False] * len(total_spectra)
+    var_ratios = [1.0] * len(total_spectra)
+    ratio_lower = [1.0] * len(total_spectra)
+    ratio_upper = [1.0] * len(total_spectra)
+    if has_var_info:
+        vr_col = np.array(nearby_table_var["var_ratio"], dtype=float)
+        fmin_col = np.array(nearby_table_var["flux_min"], dtype=float)
+        fmax_col = np.array(nearby_table_var["flux_max"], dtype=float)
+        f_col = np.array(nearby_table_var["flux"], dtype=float)
+        for i in range(len(total_spectra)):
+            var_ratios[i] = float(vr_col[i])
+            if vr_col[i] > 1.0 and f_col[i] > 0.0:
+                var_flags[i] = True
+                ratio_lower[i] = float(fmin_col[i] / f_col[i])
+                ratio_upper[i] = float(fmax_col[i] / f_col[i])
+    any_variable = any(var_flags)
+
+    spectrum_summed_lower = 0.0
+    spectrum_summed_upper = 0.0
+    for i in range(len(total_spectra)):
+        spectrum_summed_lower = spectrum_summed_lower + total_spectra[i] * ratio_lower[i]
+        spectrum_summed_upper = spectrum_summed_upper + total_spectra[i] * ratio_upper[i]
+
     # Source colors come from matplotlib's tab20 + tab20b + tab20c qualitative
     # palettes interleaved — 60 perceptually distinct colors with strong
     # contrast between adjacent source indices (the interleave alternates
@@ -382,7 +421,9 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
 
         # Right panel: total summed spectrum as median + 16-84% band. Same
         # color scheme as the per-source plots so the figures are visually
-        # consistent.
+        # consistent. The variability bracket is intentionally not overlaid
+        # here — it lives in the dedicated `merged_sum_with_variability_*`
+        # plot so this diagnostic two-panel view stays uncluttered.
         ax1 = axes[1]
         sum_median = np.median(spectrum_summed, axis=0)
         sum_p16 = np.percentile(spectrum_summed, 16, axis=0)
@@ -435,7 +476,10 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
 
             ms_ids = list(nearby_table["MS_ID"])
 
-            # One pink plot per source.
+            # One plot per source. For variable sources (var_ratio > 1) overlay
+            # a wider dotted envelope built from the source's observed flux
+            # extrema; the inner solid+band still shows the photon-index
+            # uncertainty at the nominal flux.
             for i, spectra in enumerate(total_spectra):
                 fig_s, ax_s = plt.subplots(1, 1, figsize=(8, 6))
                 ax_s.set_xlim([graph_data["min_lim_x"], graph_data["max_lim_x"]])
@@ -447,6 +491,14 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
                 median = np.median(spectra, axis=0)
                 p16 = np.percentile(spectra, 16, axis=0)
                 p84 = np.percentile(spectra, 84, axis=0)
+                if var_flags[i]:
+                    src_low = np.median(spectra * ratio_lower[i], axis=0)
+                    src_up = np.median(spectra * ratio_upper[i], axis=0)
+                    ax_s.fill_between(
+                        energies, src_low, src_up, step="post",
+                        color='bisque', alpha=0.4,
+                        label="variability range",
+                    )
                 ax_s.fill_between(
                     energies, p16, p84, step="post",
                     color='lightskyblue', alpha=0.4,
@@ -480,8 +532,12 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
                     # Ensure origin is listed first, then the others.
                     ordered = [origins[i]] + [c for c in detected if c != origins[i]]
                     detected_str = ", ".join(ordered)
+                if var_flags[i]:
+                    header = f"{iaunames[i]}  (var_ratio = {var_ratios[i]:.2f})"
+                else:
+                    header = iaunames[i]
                 title = (
-                    f"{iaunames[i]}\n"
+                    f"{header}\n"
                     f"data from: {origins[i]}  |  detected in: {detected_str}"
                 )
                 ax_s.set_title(title, fontsize=12)
@@ -496,6 +552,10 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
 
             # Standalone total-sum plot. Median + 16-84% band — same colors as
             # the per-source plots so the figures are visually consistent.
+            # Variability bracket NOT shown here — see the dedicated
+            # `*_sum_with_variability_*.png` sibling for the with-variability
+            # view. Keeping the two as separate files lets the thesis show
+            # them side-by-side ("without variability" vs "with variability").
             fig_sum, ax_sum = plt.subplots(1, 1, figsize=(8, 6))
             ax_sum.set_xlim([graph_data["min_lim_x"], graph_data["max_lim_x"]])
             ax_sum.set_ylim([graph_data["min_lim_y"], graph_data["max_lim_y"]])
@@ -514,10 +574,13 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
             ax_sum.set_xlabel("Energy [keV]")
             ax_sum.set_ylabel("Counts")
             ax_sum.legend(loc='upper right', fontsize=9)
+            sum_title_origins = ', '.join(sorted(
+                set(origins),
+                key=lambda c: CATALOG_ORDER.index(c) if c in CATALOG_ORDER else 99,
+            ))
             ax_sum.set_title(
                 f"Sum of nearby-source spectra close to {object_data['object_name']}\n"
-                f"({len(total_spectra)} sources from "
-                f"{', '.join(sorted(set(origins), key=lambda c: CATALOG_ORDER.index(c) if c in CATALOG_ORDER else 99))})",
+                f"({len(total_spectra)} sources from {sum_title_origins})",
                 fontsize=12,
             )
             sum_img_path = os.path.join(
@@ -526,6 +589,49 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
             ).replace("\\", "/")
             plt.savefig(sum_img_path, bbox_inches='tight')
             plt.close(fig_sum)
+
+            # Variability-aware companion of the standalone sum. Same baseline
+            # (median + 16-84% photon-index band) plus the light-orange
+            # variability range (linear-scaled sum using min/max observed flux
+            # for each source flagged var_ratio > 1). Provided as a separate
+            # file so the with/without comparison is a clean two-figure pair.
+            if any_variable:
+                fig_sv, ax_sv = plt.subplots(1, 1, figsize=(8, 6))
+                ax_sv.set_xlim([graph_data["min_lim_x"], graph_data["max_lim_x"]])
+                ax_sv.set_ylim([graph_data["min_lim_y"], graph_data["max_lim_y"]])
+                ax_sv.loglog()
+                sum_low_s = np.median(spectrum_summed_lower, axis=0)
+                sum_up_s = np.median(spectrum_summed_upper, axis=0)
+                ax_sv.fill_between(
+                    energies, sum_low_s, sum_up_s, step="post",
+                    color='bisque', alpha=0.4,
+                    label="variability range",
+                )
+                ax_sv.fill_between(
+                    energies, sum_p16_s, sum_p84_s, step="post",
+                    color='lightskyblue', alpha=0.4, label="16-84% envelope",
+                )
+                ax_sv.step(
+                    energies, sum_median_s, where="post",
+                    color='steelblue', linewidth=1.3, label="median",
+                )
+                ax_sv.set_xlabel("Energy [keV]")
+                ax_sv.set_ylabel("Counts")
+                ax_sv.legend(loc='upper right', fontsize=9)
+                n_var = sum(1 for f in var_flags if f)
+                ax_sv.set_title(
+                    f"Sum of nearby-source spectra close to {object_data['object_name']}"
+                    f"\n({len(total_spectra)} sources from {sum_title_origins}; "
+                    f"variability bracket from {n_var} variable source"
+                    f"{'s' if n_var != 1 else ''})",
+                    fontsize=12,
+                )
+                sum_var_img_path = os.path.join(
+                    os_dictionary['img'],
+                    f"{key}_sum_with_variability_close_to_{object_data['object_name']}.png".replace(" ", "_"),
+                ).replace("\\", "/")
+                plt.savefig(sum_var_img_path, bbox_inches='tight')
+                plt.close(fig_sv)
 
             # Per-catalog vs total summed spectra. Two panels: left shows each
             # origin catalog's collective spectrum (median + 16-84% band) using
@@ -588,7 +694,9 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
             )
 
             # Right panel: total summed spectrum in lightskyblue / steelblue,
-            # matching the right-panel style of the merged spectra plot.
+            # matching the right-panel style of the merged spectra plot. No
+            # variability overlay — that view lives in
+            # `*_sum_with_variability_*.png`.
             cat_ax_right = cat_axes[1]
             tm = np.median(spectrum_summed, axis=0)
             t16 = np.percentile(spectrum_summed, 16, axis=0)
