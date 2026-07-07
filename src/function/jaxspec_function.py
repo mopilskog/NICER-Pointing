@@ -16,6 +16,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scienceplots  # noqa: F401  registers 'science' / related styles with matplotlib
 import jax.numpy as jnp
+import catalog_information as dict_cat
 
 # Silence matplotlib's texmanager INFO log about "No LaTeX-compatible font found
 # for the serif fontfamily in rcParams". The rendering still uses Computer Modern
@@ -88,61 +89,35 @@ def cross_catalog_index(output_name: str, key: str, iauname: str, nearby_sources
 
     return var_index_in_nearby_sources_table
 
-def norm_estimation (nearby_sources_table: Table, model, index, key):
-    norm = 1e-5
-    # jaxspec >= 0.2 uses flat parameter dicts keyed as "<component>_<param>"
-    # instead of the nested {"component": {"param": value}} format.
-    param = {
-        "tbabs_1_nh": nearby_sources_table["Nh"][index] / 1e22,
-        "powerlaw_1_alpha": (
-            nearby_sources_table["Photon Index"][index]
-            if nearby_sources_table["Photon Index"][index] > 0.0 else 1.7
-        ),
-        "powerlaw_1_norm": norm,
-    }
-    if key == "Chandra":
-        Total_flux = nearby_sources_table["flux_aper_b"][index]
-        iauname = "Chandra_IAUNAME"
-    elif key =="XMM":
-        Total_flux = nearby_sources_table["SC_EP_8_FLUX"][index]
-        iauname = "IAUNAME"
-    elif key == "eRASS1":
-        Total_flux = nearby_sources_table["ML_FLUX_1"][index]
-        iauname = "eRASS_IAUNAME"
-    elif key == "CS_Chandra":
-        Total_flux = nearby_sources_table["flux_aper_b"][index]
-        iauname = "Chandra_IAUNAME"
-    elif key == "Swift":
-        Total_flux = nearby_sources_table["Flux"][index]
-        iauname = "Swift_IAUNAME"
-    elif key == "merged":
-        Total_flux = nearby_sources_table["flux"][index]
-        iauname = "iau_name"
+def source_flux_and_name(nearby_sources_table: Table, index, key):
+    """Observed flux (erg/cm²/s) and IAU-name column for a source. Column names
+    come from the central catalog config; "merged" uses the pipeline's uniform
+    columns since it is not a single catalog."""
+    if key == "merged":
+        flux_col, name_col = "flux", "iau_name"
+    else:
+        flux_col = dict_cat.dictionary_catalog[key]["flux_obs"]
+        name_col = dict_cat.dictionary_coord[key]["iauname"]
+    target_flux = nearby_sources_table[flux_col][index] * (u.erg / u.cm**2 / u.s)
+    return target_flux, name_col
 
-    target_flux = Total_flux * (u.erg / u.cm**2 / u.s)
 
-    tolerance = 1e-15 * u.erg / (u.cm**2 * u.s)  # in erg/cm²/s
-    max_iterations = 10000  # Maximum number of iterations to avoid infinite loop
-    learning_rate = 1.0e7 * (u.cm**2 * u.s) / u.erg  # in (cm² s) / erg
+def norm_for_alpha_samples(model, nh_over_1e22, target_flux, alpha_samples):
+    """Normalization per photon-index sample, so every sample reproduces the
+    source's observed flux. The absorbed power-law energy flux is linear in
+    norm at fixed alpha and N_H, so norm(alpha) = target_flux / G(alpha), where
+    G(alpha) is the 0.3-10 keV energy flux at norm=1. G is evaluated only on the
+    unique alpha values (the constant-alpha branches then cost one model call)."""
     energies = jnp.geomspace(0.3, 10, 100)
-    
-    for iteration in range(max_iterations):
-        energy_flux = model.energy_flux(param, energies[:-1], energies[1:], n_points=100) * (u.keV/ ( u.s * u.cm**2))
-        total_computed_flux = np.sum(energy_flux)  # Sum across the energy bands
-        total_computed_flux = total_computed_flux.to(u.erg / u.cm**2/ u.s)  # Sum across the energy bands
-
-        # Calculate the difference between computed flux and target flux
-        flux_difference = target_flux - total_computed_flux
-
-        # Check if the computed flux is close enough to the target flux
-        if np.abs(flux_difference) < tolerance:
-            #print(f"Matching flux found with norm: {param['powerlaw_1_norm']} at iteration {iteration}")
-            break
-        #learning_rate = 1.0e9 * (flux_difference / target_flux).value * (u.cm**2 * u.s) / u.erg
-        norm = norm + flux_difference * learning_rate
-        param['powerlaw_1_norm'] = norm
-    source = nearby_sources_table[iauname][index]
-    return norm, iauname
+    uniq, inverse = np.unique(alpha_samples, return_inverse=True)
+    norm_uniq = np.empty(len(uniq), dtype=float)
+    for i, alpha in enumerate(uniq):
+        param = {"tbabs_1_nh": nh_over_1e22, "powerlaw_1_alpha": float(alpha),
+                 "powerlaw_1_norm": 1.0}
+        g = np.sum(model.energy_flux(param, energies[:-1], energies[1:], n_points=100)) \
+            * (u.keV / (u.s * u.cm**2))
+        norm_uniq[i] = (target_flux / g.to(u.erg / u.cm**2 / u.s)).to_value(u.dimensionless_unscaled)
+    return norm_uniq[inverse]
 
 def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_index, key) -> List:
     """
@@ -175,7 +150,7 @@ def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_i
     size = 100
 
     for index, vignet_factor in tqdm(enumerate(nearby_sources_table["vignetting_factor"])):
-        norm, iauname = norm_estimation(nearby_sources_table, model=model, index=index, key=key)
+        target_flux, iauname = source_flux_and_name(nearby_sources_table, index=index, key=key)
 
         pho_idx = float(nearby_sources_table["Photon Index"][index])
         pho_idx_err = float(nearby_sources_table["Photon Index Error"][index])
@@ -191,22 +166,24 @@ def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_i
             ))
             alpha_samples = np.full(size, 1.7)
         elif pho_idx_err > 0.0:
-            # Sample from N(alpha, perr), then floor at 0. A negative alpha
-            # gives a rising spectrum (E^(+|alpha|)) at high energies, which is
-            # unphysical for X-ray power-law sources in 0.3-10 keV.
-            alpha_samples = np.clip(
-                np.random.normal(pho_idx, pho_idx_err, size),
-                a_min=0.0, a_max=None,
-            )
+            # Sample the photon index from N(alpha, perr). Negative (hard) alpha
+            # is allowed: with per-sample normalization the spectrum stays at the
+            # observed flux, so it does not blow up at high energy.
+            alpha_samples = np.random.normal(pho_idx, pho_idx_err, size)
         else:
             # No error info available (e.g. failed fit path, user-added source).
             alpha_samples = np.full(size, pho_idx if pho_idx > 0.0 else 1.7)
 
+        nh_over_1e22 = nearby_sources_table["Nh"][index] / 1e22
+        # One norm per sample so all 100 spectra reproduce the observed flux;
+        # the 16-84% spread then reflects photon-index shape only, not a flux drift.
+        norm_samples = norm_for_alpha_samples(model, nh_over_1e22, target_flux, alpha_samples)
+
         # jaxspec >= 0.2 expects flat parameter dicts keyed "<component>_<param>".
         parameters = {
-            "tbabs_1_nh": np.full(size, nearby_sources_table["Nh"][index] / 1e22),
+            "tbabs_1_nh": np.full(size, nh_over_1e22),
             "powerlaw_1_alpha": alpha_samples,
-            "powerlaw_1_norm": np.full(size, norm),
+            "powerlaw_1_norm": norm_samples,
         }
 
         spectra = fakeit_for_multiple_parameters(obsconfig, model, parameters) * vignet_factor
