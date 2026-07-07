@@ -331,8 +331,11 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
     # plots. Scoped to this function so other matplotlib output in the project
     # is unaffected.
     with plt.style.context(['science', 'retro']):
+        # Combined two-panel diagnostic plot (top-5 brightest + remaining on the
+        # left, total summed spectrum on the right). The single-panel
+        # title-free counterparts of each panel are saved separately further
+        # below so they can be included individually in LaTeX/PDF reports.
         figure_1, axes = plt.subplots(1, 2, figsize=(14, 7), sharey=True)
-        figure_1.suptitle(f"Spectral modeling close to {object_data['object_name']}\ncatalog : {catalog_name}", fontsize=20)
         figure_1.text(0.5, 0.04, 'Energy [keV]', ha='center', va='center', fontsize=16)
         figure_1.text(0.085, 0.5, 'Counts', ha='center', va='center', rotation='vertical', fontsize=16)
 
@@ -393,7 +396,6 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
                 label=f"sum of {len(other_idx)} remaining sources",
             )
 
-        ax0.set_title(f"Top {min(N_BRIGHTEST, len(total_spectra))} brightest + remaining sum")
         ax0.legend(loc='upper right', fontsize=8)
 
         # Right panel: total summed spectrum as median + 16-84% band. Same
@@ -413,13 +415,54 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
             energies, sum_median, where="post",
             color='steelblue', linewidth=1.3, label="median",
         )
-        ax1.set_title("Sum of all source spectra")
         ax1.legend(loc='upper right', fontsize=9)
 
         key = simulation_data["os_dictionary"]["catalog_key"]
         img_path = os.path.join(os_dictionary['img'], f"{key}_spectral_modeling_close_to_{object_data['object_name']}.png".replace(" ", "_")).replace("\\", "/")
         plt.savefig(img_path, bbox_inches='tight')
         plt.show()
+
+        # Standalone, title-free single-panel version of the left panel
+        # (top-5 brightest sources + remaining-sum auxiliary curve). Same
+        # plotting logic as ax0 above, just on its own axes so it can be
+        # included individually in LaTeX without needing the right panel.
+        fig_top5, ax_top5 = plt.subplots(1, 1, figsize=(8, 7))
+        ax_top5.set_xlim([graph_data["min_lim_x"], graph_data["max_lim_x"]])
+        ax_top5.set_ylim([graph_data["min_lim_y"], graph_data["max_lim_y"]])
+        ax_top5.loglog()
+        for rank, i in enumerate(brightest_idx):
+            spectra = total_spectra[i]
+            median = np.median(spectra, axis=0)
+            p16 = np.percentile(spectra, 16, axis=0)
+            p84 = np.percentile(spectra, 84, axis=0)
+            color = brightest_colors[rank]
+            label = (
+                f"{origins[i]}: {iaunames[i]}" if has_origin
+                else (iaunames[i] if iaunames else f"source {i}")
+            )
+            ax_top5.fill_between(energies, p16, p84, step="post", color=color, alpha=0.40)
+            ax_top5.step(energies, median, where="post", color=color, lw=1.5, label=label)
+        if other_idx:
+            others_summed = 0
+            for i in other_idx:
+                others_summed = others_summed + total_spectra[i]
+            om = np.median(others_summed, axis=0)
+            o16 = np.percentile(others_summed, 16, axis=0)
+            o84 = np.percentile(others_summed, 84, axis=0)
+            ax_top5.fill_between(energies, o16, o84, step="post", color='lightcoral', alpha=0.40)
+            ax_top5.step(
+                energies, om, where="post", color='lightcoral', lw=1.5,
+                label=f"sum of {len(other_idx)} remaining sources",
+            )
+        ax_top5.set_xlabel("Energy [keV]")
+        ax_top5.set_ylabel("Counts")
+        ax_top5.legend(loc='upper right', fontsize=9)
+        top5_img_path = os.path.join(
+            os_dictionary['img'],
+            f"{key}_top5_close_to_{object_data['object_name']}.png".replace(" ", "_"),
+        ).replace("\\", "/")
+        plt.savefig(top5_img_path, bbox_inches='tight')
+        plt.close(fig_top5)
 
         # Merged-mode only: one plot per source (pink curve-spaghetti) plus a
         # dedicated sum plot (blue curve-spaghetti). Each per-source plot is
@@ -469,8 +512,15 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
                 p16 = np.percentile(spectra, 16, axis=0)
                 p84 = np.percentile(spectra, 84, axis=0)
                 if var_flags[i]:
-                    src_low = np.median(spectra * ratio_lower[i], axis=0)
-                    src_up = np.median(spectra * ratio_upper[i], axis=0)
+                    # Outer envelope combining flux variability + photon-index
+                    # uncertainty: 16th percentile at the low-flux state up to
+                    # the 84th percentile at the high-flux state. Because
+                    # ratio_lower <= 1 <= ratio_upper, this envelope is
+                    # guaranteed to be at least as wide as the inner blue
+                    # 16-84% band at the nominal flux (so orange always
+                    # encloses blue, as a "combined plausible range" should).
+                    src_low = np.percentile(spectra * ratio_lower[i], 16, axis=0)
+                    src_up = np.percentile(spectra * ratio_upper[i], 84, axis=0)
                     ax_s.fill_between(
                         energies, src_low, src_up, step="post",
                         color='bisque', alpha=0.4,
@@ -490,34 +540,9 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
                 ax_s.set_ylabel("Counts")
                 ax_s.legend(loc='upper right', fontsize=9)
 
-                ms_id = int(ms_ids[i])
-                detected = list(ms_id_to_detected.get(ms_id, []))
-                # Also fold in any catalogs the post-merge spatial dedup attached
-                # to this row (e.g. an unmatched XMM detection that got folded
-                # into this Chandra-origin row).
-                if "extra_detections" in nearby_table.colnames:
-                    raw_extra = str(nearby_table["extra_detections"][i]).strip()
-                    if raw_extra:
-                        for c in raw_extra.split(","):
-                            if c and c not in detected:
-                                detected.append(c)
-                if ms_id == -1 and not detected:
-                    detected_str = f"{origins[i]} (not in Master_source.fits)"
-                elif not detected:
-                    detected_str = origins[i]
-                else:
-                    # Ensure origin is listed first, then the others.
-                    ordered = [origins[i]] + [c for c in detected if c != origins[i]]
-                    detected_str = ", ".join(ordered)
-                if var_flags[i]:
-                    header = f"{iaunames[i]}  (var_ratio = {var_ratios[i]:.2f})"
-                else:
-                    header = iaunames[i]
-                title = (
-                    f"{header}\n"
-                    f"data from: {origins[i]}  |  detected in: {detected_str}"
-                )
-                ax_s.set_title(title, fontsize=12)
+                # No in-figure title -- the source name and var_ratio are
+                # encoded in the saved filename, and any report that includes
+                # this plot puts the identification in the LaTeX caption.
 
                 safe_name = iaunames[i].replace(" ", "_").replace("/", "_")
                 source_img_path = os.path.join(
@@ -533,7 +558,7 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
             # `*_sum_with_variability_*.png` sibling for the with-variability
             # view. Keeping the two as separate files lets the thesis show
             # them side-by-side ("without variability" vs "with variability").
-            fig_sum, ax_sum = plt.subplots(1, 1, figsize=(8, 6))
+            fig_sum, ax_sum = plt.subplots(1, 1, figsize=(8, 7))
             ax_sum.set_xlim([graph_data["min_lim_x"], graph_data["max_lim_x"]])
             ax_sum.set_ylim([graph_data["min_lim_y"], graph_data["max_lim_y"]])
             ax_sum.loglog()
@@ -555,11 +580,6 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
                 set(origins),
                 key=lambda c: CATALOG_ORDER.index(c) if c in CATALOG_ORDER else 99,
             ))
-            ax_sum.set_title(
-                f"Sum of nearby-source spectra close to {object_data['object_name']}\n"
-                f"({len(total_spectra)} sources from {sum_title_origins})",
-                fontsize=12,
-            )
             sum_img_path = os.path.join(
                 os_dictionary['img'],
                 f"{key}_sum_close_to_{object_data['object_name']}.png".replace(" ", "_"),
@@ -573,12 +593,17 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
             # for each source flagged var_ratio > 1). Provided as a separate
             # file so the with/without comparison is a clean two-figure pair.
             if any_variable:
-                fig_sv, ax_sv = plt.subplots(1, 1, figsize=(8, 6))
+                fig_sv, ax_sv = plt.subplots(1, 1, figsize=(8, 7))
                 ax_sv.set_xlim([graph_data["min_lim_x"], graph_data["max_lim_x"]])
                 ax_sv.set_ylim([graph_data["min_lim_y"], graph_data["max_lim_y"]])
                 ax_sv.loglog()
-                sum_low_s = np.median(spectrum_summed_lower, axis=0)
-                sum_up_s = np.median(spectrum_summed_upper, axis=0)
+                # Outer envelope combining flux variability + photon-index
+                # uncertainty: 16th percentile of the low-state summed
+                # spectrum up to the 84th percentile of the high-state summed
+                # spectrum. Guaranteed to enclose the inner blue 16-84% band
+                # at the nominal flux.
+                sum_low_s = np.percentile(spectrum_summed_lower, 16, axis=0)
+                sum_up_s = np.percentile(spectrum_summed_upper, 84, axis=0)
                 ax_sv.fill_between(
                     energies, sum_low_s, sum_up_s, step="post",
                     color='bisque', alpha=0.4,
@@ -595,14 +620,6 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
                 ax_sv.set_xlabel("Energy [keV]")
                 ax_sv.set_ylabel("Counts")
                 ax_sv.legend(loc='upper right', fontsize=9)
-                n_var = sum(1 for f in var_flags if f)
-                ax_sv.set_title(
-                    f"Sum of nearby-source spectra close to {object_data['object_name']}"
-                    f"\n({len(total_spectra)} sources from {sum_title_origins}; "
-                    f"variability bracket from {n_var} variable source"
-                    f"{'s' if n_var != 1 else ''})",
-                    fontsize=12,
-                )
                 sum_var_img_path = os.path.join(
                     os_dictionary['img'],
                     f"{key}_sum_with_variability_close_to_{object_data['object_name']}.png".replace(" ", "_"),
@@ -629,11 +646,6 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
             ]
 
             fig_cat, cat_axes = plt.subplots(1, 2, figsize=(14, 7), sharey=True)
-            fig_cat.suptitle(
-                f"Per-catalog and total summed spectra close to "
-                f"{object_data['object_name']}",
-                fontsize=18,
-            )
             fig_cat.text(0.5, 0.04, 'Energy [keV]', ha='center', va='center', fontsize=14)
             fig_cat.text(0.085, 0.5, 'Counts', ha='center', va='center',
                          rotation='vertical', fontsize=14)
@@ -663,7 +675,6 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
                     color=color, linewidth=1.5,
                     label=f"{cat} ({len(cat_indices)} sources)",
                 )
-            cat_ax_left.set_title("Sum per origin catalog")
             cat_ax_left.legend(
                 loc='upper right', fontsize=9,
                 title="median + 16-84% envelope",
@@ -688,7 +699,6 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
                 color='steelblue', linewidth=1.3,
                 label="median",
             )
-            cat_ax_right.set_title("Total summed spectrum")
             cat_ax_right.legend(loc='upper right', fontsize=9)
 
             cat_img_path = os.path.join(
@@ -697,6 +707,48 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
             ).replace("\\", "/")
             plt.savefig(cat_img_path, bbox_inches='tight')
             plt.close(fig_cat)
+
+            # Standalone, title-free single-panel version of the per-origin
+            # sum (left panel of fig_cat). Saved separately so it can be
+            # included individually in LaTeX without the right (total)
+            # panel next to it.
+            fig_origin, ax_origin = plt.subplots(1, 1, figsize=(8, 7))
+            ax_origin.set_xlim([graph_data["min_lim_x"], graph_data["max_lim_x"]])
+            ax_origin.set_ylim([graph_data["min_lim_y"], graph_data["max_lim_y"]])
+            ax_origin.loglog()
+            for cat in unique_origins_ordered:
+                cat_indices = [i for i, o in enumerate(origins) if o == cat]
+                if not cat_indices:
+                    continue
+                cat_summed = 0
+                for i in cat_indices:
+                    cat_summed = cat_summed + total_spectra[i]
+                cm = np.median(cat_summed, axis=0)
+                c16 = np.percentile(cat_summed, 16, axis=0)
+                c84 = np.percentile(cat_summed, 84, axis=0)
+                color = CATALOG_PASTEL2_COLOR.get(cat, pastel2[0])
+                ax_origin.fill_between(
+                    energies, c16, c84, step="post",
+                    color=color, alpha=0.40,
+                )
+                ax_origin.step(
+                    energies, cm, where="post",
+                    color=color, linewidth=1.5,
+                    label=f"{cat} ({len(cat_indices)} sources)",
+                )
+            ax_origin.set_xlabel("Energy [keV]")
+            ax_origin.set_ylabel("Counts")
+            ax_origin.legend(
+                loc='upper right', fontsize=9,
+                title="median + 16-84% envelope",
+                title_fontsize=8,
+            )
+            origin_img_path = os.path.join(
+                os_dictionary['img'],
+                f"{key}_per_origin_close_to_{object_data['object_name']}.png".replace(" ", "_"),
+            ).replace("\\", "/")
+            plt.savefig(origin_img_path, bbox_inches='tight')
+            plt.close(fig_origin)
 
     # .txt envelope (used by write_txt_file): median + 16th / 84th percentile
     # of the 100 total summed spectra at each energy bin.
