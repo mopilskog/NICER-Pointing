@@ -484,8 +484,11 @@ class MultiCatalogPipeline:
     def _save_merged_neighborhood_plot(self, merged_table: Table) -> None:
         """Plot every merged source on a single RA/DEC figure, colored by
         ``origin_catalog``. Same per-catalog hue scheme as the spectrum plot so
-        the two figures can be cross-referenced visually."""
+        the two figures can be cross-referenced visually. Wrapped in the
+        scienceplots science+retro style so the typography matches the
+        spectrum plots."""
         import matplotlib.pyplot as plt
+        import scienceplots  # noqa: F401  registers the 'science' style
         from matplotlib.colors import hsv_to_rgb
         from matplotlib.patches import Ellipse
 
@@ -522,114 +525,127 @@ class MultiCatalogPipeline:
                             detected.append(c)
                 ms_id_to_detected[int(row["MS_ID"])] = detected
 
-        fig, ax = plt.subplots(figsize=(9, 9))
+        with plt.style.context(['science', 'retro']):
+            # 8x7 figsize matches the per-source/summed/per-origin spectra
+            # plots, so when these figures sit side-by-side in a LaTeX/PDF
+            # report (each constrained to ~half the text width) they all
+            # render at the same height. Font sizes below are bumped relative
+            # to scienceplots' defaults so the text stays readable at the
+            # smaller half-width rendering.
+            fig, ax = plt.subplots(figsize=(8, 7))
 
-        # Pre-compute per-catalog facecolor once so origin marker and rings stay
-        # consistent.
-        cat_color = {
-            c: hsv_to_rgb([CATALOG_HUES.get(c, 0.5), 0.65, 0.85])
-            for c in ["XMM", "Swift", "eRASS1", "Chandra", "user"]
-        }
+            # Pre-compute per-catalog facecolor once so origin marker and rings
+            # stay consistent.
+            cat_color = {
+                c: hsv_to_rgb([CATALOG_HUES.get(c, 0.5), 0.65, 0.85])
+                for c in ["XMM", "Swift", "eRASS1", "Chandra", "user"]
+            }
 
-        # Origin markers (filled, with the origin catalog's color). One scatter
-        # group per origin catalog so the legend has one entry each.
-        catalog_order = ["XMM", "Swift", "eRASS1", "Chandra", "user"]
-        present = [c for c in catalog_order if c in set(merged_table["origin_catalog"])]
-        for cat in present:
-            ras = [
-                float(merged_table["RA"][i])
-                for i in range(len(merged_table))
-                if str(merged_table["origin_catalog"][i]) == cat
-            ]
-            decs = [
-                float(merged_table["DEC"][i])
-                for i in range(len(merged_table))
-                if str(merged_table["origin_catalog"][i]) == cat
-            ]
-            ax.scatter(
-                ras, decs,
-                s=60, color=cat_color[cat], edgecolor='black', linewidth=0.5,
-                label=f"{cat} (origin): {len(ras)}", alpha=0.85, zorder=4,
-            )
-
-        # Concentric rings: for each merged row, draw an empty circle for every
-        # OTHER catalog that detected this source. Two sources of that info:
-        #   - master_source_cone columns at this MS_ID (for MS_ID != -1)
-        #   - the row's extra_detections column, populated when the post-merge
-        #     spatial dedup folded another catalog's nearby row into this one
-        # Inner marker already shows the origin. Ring sizes grow outward.
-        BASE_SIZE = 60
-        RING_STEP = 80
-        has_extra_col = "extra_detections" in merged_table.colnames
-        for i in range(len(merged_table)):
-            ms_id = int(merged_table["MS_ID"][i])
-            origin = str(merged_table["origin_catalog"][i])
-            detected_by_master = ms_id_to_detected.get(ms_id, []) if ms_id != -1 else []
-            spatial_extras = []
-            if has_extra_col:
-                raw = str(merged_table["extra_detections"][i]).strip()
-                if raw:
-                    spatial_extras = [c for c in raw.split(",") if c]
-            others = []
-            for c in detected_by_master + spatial_extras:
-                if c != origin and c not in others:
-                    others.append(c)
-            if not others:
-                continue
-            ra_i = float(merged_table["RA"][i])
-            dec_i = float(merged_table["DEC"][i])
-            for ring_idx, other_cat in enumerate(others):
-                ring_size = BASE_SIZE + RING_STEP * (ring_idx + 1)
+            # Origin markers (filled, with the origin catalog's color). One
+            # scatter group per origin catalog so the legend has one entry each.
+            catalog_order = ["XMM", "Swift", "eRASS1", "Chandra", "user"]
+            present = [c for c in catalog_order if c in set(merged_table["origin_catalog"])]
+            for cat in present:
+                ras = [
+                    float(merged_table["RA"][i])
+                    for i in range(len(merged_table))
+                    if str(merged_table["origin_catalog"][i]) == cat
+                ]
+                decs = [
+                    float(merged_table["DEC"][i])
+                    for i in range(len(merged_table))
+                    if str(merged_table["origin_catalog"][i]) == cat
+                ]
                 ax.scatter(
-                    [ra_i], [dec_i],
-                    s=ring_size,
-                    facecolors='none',
-                    edgecolor=cat_color.get(other_cat, (0.5, 0.5, 0.5)),
-                    linewidth=1.4,
-                    alpha=0.9,
-                    zorder=3 - 0.01 * ring_idx,
+                    ras, decs,
+                    s=60, color=cat_color[cat], edgecolor='black', linewidth=0.5,
+                    label=f"{cat} (origin): {len(ras)}", alpha=0.85, zorder=4,
                 )
 
-        ax.scatter(
-            [psr_ra], [psr_dec],
-            marker="*", s=350, color="red",
-            edgecolor="black", linewidth=1,
-            label=object_data["object_name"], zorder=5,
-        )
-        # On the sky, "radius in arcmin" is a spherical cap. In RA/DEC degree
-        # space at declination ≠ 0 that's an ellipse, not a circle:
-        # 1 arcmin of RA spans 1/cos(dec) arcmin of true sky distance. So the
-        # cap's RA half-width is radius/cos(dec) while the DEC half-width is
-        # just radius. Drawing a circle would visually under-cover the cap and
-        # make in-FoV sources at high |dec| look as if they're outside.
-        cos_dec = np.cos(np.deg2rad(psr_dec))
-        ax.add_patch(Ellipse(
-            (psr_ra, psr_dec),
-            width=2 * radius_deg / cos_dec,
-            height=2 * radius_deg,
-            fill=False, color="gray", linestyle="--", linewidth=1,
-        ))
+            # Concentric rings: for each merged row, draw an empty circle for
+            # every OTHER catalog that detected this source. Two sources of
+            # that info:
+            #   - master_source_cone columns at this MS_ID (for MS_ID != -1)
+            #   - the row's extra_detections column, populated when the
+            #     post-merge spatial dedup folded another catalog's nearby
+            #     row into this one
+            # Inner marker already shows the origin. Ring sizes grow outward.
+            BASE_SIZE = 60
+            RING_STEP = 80
+            has_extra_col = "extra_detections" in merged_table.colnames
+            for i in range(len(merged_table)):
+                ms_id = int(merged_table["MS_ID"][i])
+                origin = str(merged_table["origin_catalog"][i])
+                detected_by_master = ms_id_to_detected.get(ms_id, []) if ms_id != -1 else []
+                spatial_extras = []
+                if has_extra_col:
+                    raw = str(merged_table["extra_detections"][i]).strip()
+                    if raw:
+                        spatial_extras = [c for c in raw.split(",") if c]
+                others = []
+                for c in detected_by_master + spatial_extras:
+                    if c != origin and c not in others:
+                        others.append(c)
+                if not others:
+                    continue
+                ra_i = float(merged_table["RA"][i])
+                dec_i = float(merged_table["DEC"][i])
+                for ring_idx, other_cat in enumerate(others):
+                    ring_size = BASE_SIZE + RING_STEP * (ring_idx + 1)
+                    ax.scatter(
+                        [ra_i], [dec_i],
+                        s=ring_size,
+                        facecolors='none',
+                        edgecolor=cat_color.get(other_cat, (0.5, 0.5, 0.5)),
+                        linewidth=1.4,
+                        alpha=0.9,
+                        zorder=3 - 0.01 * ring_idx,
+                    )
 
-        ax.set_xlabel("RA [deg]")
-        ax.set_ylabel("DEC [deg]")
-        ax.set_title(
-            f"Neighbourhood of {object_data['object_name']} "
-            f"(merged catalog, radius = {self.radius.to(u.arcmin).value:.1f}')\n"
-            f"Filled marker = data origin.  Outer ring(s) = also detected in "
-            f"that catalog per Master_source_cone."
-        )
-        ax.legend(loc='upper right', fontsize=9)
-        ax.invert_xaxis()       # RA increases to the left, astronomy convention
-        ax.set_aspect('equal', adjustable='datalim')
+            ax.scatter(
+                [psr_ra], [psr_dec],
+                marker="*", s=350, color="red",
+                edgecolor="black", linewidth=1,
+                label=object_data["object_name"], zorder=5,
+            )
+            # On the sky, "radius in arcmin" is a spherical cap. In RA/DEC
+            # degree space at declination != 0 that's an ellipse, not a
+            # circle: 1 arcmin of RA spans 1/cos(dec) arcmin of true sky
+            # distance. So the cap's RA half-width is radius/cos(dec) while
+            # the DEC half-width is just radius. Drawing a circle would
+            # visually under-cover the cap and make in-FoV sources at high
+            # |dec| look as if they're outside.
+            cos_dec = np.cos(np.deg2rad(psr_dec))
+            ax.add_patch(Ellipse(
+                (psr_ra, psr_dec),
+                width=2 * radius_deg / cos_dec,
+                height=2 * radius_deg,
+                fill=False, color="gray", linestyle="--", linewidth=1,
+            ))
 
-        img_dir = self.simulation_data["os_dictionary"]["img"]
-        target_name = object_data["object_name"].replace(" ", "_")
-        out_path = os.path.join(
-            img_dir, f"merged_neighbourhood_of_{target_name}.png"
-        ).replace("\\", "/")
-        plt.savefig(out_path, bbox_inches='tight', dpi=150)
-        plt.close(fig)
-        print(colored(f"Merged neighborhood plot saved: {out_path}", 'green'))
+            ax.set_xlabel("RA [deg]", fontsize=14)
+            ax.set_ylabel("DEC [deg]", fontsize=14)
+            ax.tick_params(labelsize=11)
+            # No title — the figure is included in LaTeX/PDF reports where
+            # the caption already names it. Drop the in-figure title so the
+            # plot reads cleanly as a scientific-article figure.
+            # 'best' lets matplotlib pick the legend location with the least
+            # overlap on plotted points — important for the neighborhood plot
+            # where the pulsar/target marker can land anywhere in the FoV
+            # (e.g. for PSR J2124-3358 it sits in the upper-right where the
+            # legend would otherwise default to).
+            ax.legend(loc='best', fontsize=11)
+            ax.invert_xaxis()       # RA increases to the left, astronomy convention
+            ax.set_aspect('equal', adjustable='datalim')
+
+            img_dir = self.simulation_data["os_dictionary"]["img"]
+            target_name = object_data["object_name"].replace(" ", "_")
+            out_path = os.path.join(
+                img_dir, f"merged_neighbourhood_of_{target_name}.png"
+            ).replace("\\", "/")
+            plt.savefig(out_path, bbox_inches='tight', dpi=150)
+            plt.close(fig)
+            print(colored(f"Merged neighborhood plot saved: {out_path}", 'green'))
 
     def _write_manifest(self,
                         stats: Dict,
@@ -814,8 +830,16 @@ class MultiCatalogPipeline:
         For rows with a real MS_ID, the values come from the MasterSource record
         loaded from Master_source_cone + per-catalog FITS in the Pointings/
         directory. ``var_ratio = max_lower / min_upper`` (>1 means variability
-        detected beyond per-observation errors); ``flux_min`` / ``flux_max`` are
-        the raw observed extrema across all detections of that master source.
+        detected beyond per-observation errors). ``flux_min`` / ``flux_max``
+        are the widest defensible bracket: the per-observation central fluxes
+        extended outward by their error bars, i.e.
+        ``flux_min = min_i(f_i - err_neg_i)`` and
+        ``flux_max = max_i(f_i + err_pos_i)``. The lower edge is clipped to
+        the central flux when ``f_i - err_neg_i`` would be non-positive
+        (matching MasterSource's ``max_lower`` convention). Erring on the
+        wider side biases the bracket toward overestimating contamination,
+        which is the safer direction for the optimal-pointing calculation
+        (underestimating would bias the chosen pointing).
 
         For unmatched rows (MS_ID == -1) and user-added rows, no master-source
         record exists, so var_ratio defaults to 1.0 and the flux extrema collapse
@@ -839,10 +863,19 @@ class MultiCatalogPipeline:
                 and len(ms.sources_flux) > 0
                 and not np.isnan(ms.sources_flux).all()
             ):
-                valid = ms.sources_flux[~np.isnan(ms.sources_flux)]
+                valid_mask = ~np.isnan(ms.sources_flux)
+                flux_arr = np.asarray(ms.sources_flux)[valid_mask]
+                err_neg = np.asarray(ms.sources_error_bar[0])[valid_mask]
+                err_pos = np.asarray(ms.sources_error_bar[1])[valid_mask]
+                lower_candidates = np.where(
+                    flux_arr - err_neg > 0,
+                    flux_arr - err_neg,
+                    flux_arr,
+                )
+                upper_candidates = flux_arr + err_pos
                 row["var_ratio"] = float(ms.var_ratio)
-                row["flux_min"] = float(np.min(valid))
-                row["flux_max"] = float(np.max(valid))
+                row["flux_min"] = float(np.min(lower_candidates))
+                row["flux_max"] = float(np.max(upper_candidates))
             else:
                 row["var_ratio"] = 1.0
                 row["flux_min"] = float(row["flux"])
