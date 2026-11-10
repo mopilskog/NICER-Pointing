@@ -358,7 +358,8 @@ class XmmCatalog:
             popt, pcov = curve_fit(absorbed_power_law, energy_band, y_array, sigma=yerr_array)
             constant, absorb_pho_index = popt
             perr = np.sqrt(np.diag(pcov))
-            absorb_random = np.random.normal(absorb_pho_index, perr[1])
+            perr = perr[1]
+            absorb_random = np.random.normal(absorb_pho_index, perr)
             #perr will have 2 values one associated with the const and another with the absorb_pho_index
 
         except Exception as error:
@@ -369,7 +370,7 @@ class XmmCatalog:
 
         optimization_parameters = (energy_band, y_array, yerr_array, absorbed_power_law(energy_band, *popt))
         #return optimization_parameters, absorb_pho_index, perr[1]
-        return optimization_parameters, absorb_pho_index, perr[1]
+        return optimization_parameters, absorb_pho_index, perr
 
 
     def visualization_interp(self, optimization_parameters, photon_index) -> None:
