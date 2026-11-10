@@ -66,6 +66,12 @@ class XmmCatalog:
         in astrophysics and contributing to the broader understanding of celestial phenomena.
     """
 
+    # Take Nh and photon index from Xmm2Athena for sources found there (see
+    # get_phoindex_nh). Disabled because Xmm2Athena did not give good results;
+    # all sources instead use the NHI_HPX map for Nh and the band-flux fit for
+    # the photon index. Set to True to rerun the Xmm2Athena path.
+    USE_XMM2ATHENA = False
+
     def __init__(self, catalog_path: str, radius: Quantity, simulation_data:Dict, user_table: Table) -> None:
         """
         Initializes the XmmCatalog class by setting up the X-ray Multi-Mirror (XMM) mission source catalogs.
@@ -486,9 +492,7 @@ class XmmCatalog:
     
 
         for number in range(len(name_list)):
-            i = 0
-            if i == 1:
-            #if index_table["Index in x2a"][number] != "No data found":
+            if self.USE_XMM2ATHENA and index_table["Index in x2a"][number] != "No data found":
 
                 nh_value = self.x2a_catalog["logNH_med"][number]
                 nh_value_min = self.x2a_catalog["logNH_med_min"][number]
@@ -511,9 +515,7 @@ class XmmCatalog:
                 pho_index_min = self.x2a_catalog['PhoIndex_med_min'][number]
                 pho_index_max = self.x2a_catalog['PhoIndex_med_max'][number]
 
-                
-
-               
+                      
             else:
                 
                 ra_val = self.nearby_sources_table[self.ra][number]
