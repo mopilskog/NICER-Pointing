@@ -548,8 +548,8 @@ class XmmCatalog:
                     
         for index in index_add_source:
 
-            ra_val = self.nearby_sources_table[self.ra][number]
-            dec_val = self.nearby_sources_table[self.dec][number]
+            ra_val = self.nearby_sources_table[self.ra][index]
+            dec_val = self.nearby_sources_table[self.dec][index]
             
             distances = np.sqrt((self.nh_dictionnary['RA2000'] - ra_val)**2 + (self.nh_dictionnary["DEC2000"] - dec_val)**2)
             best_match_index = np.argmin(distances)
