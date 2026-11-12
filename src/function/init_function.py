@@ -133,57 +133,13 @@ def choose_catalog(args_catalog) -> Tuple[str, str]:
                 valid_path = get_valid_file_path(eRASS1_path)
                 print("-"*50, "\n")
                 return valid_path, args_catalog
-            elif args_catalog == "compare_catalog":
-                print("\n")
-                print("Enter catalog keyword (Xmm_DR13/CSC_2.0/Swift/eRASS1)")
-                catalog_1 = str(input("First catalog : "))
-                while True:
-                    if catalog_1 == "Xmm_DR13":
-                        catalog_1_path = os.path.join(catalog_datapath, "4XMM_slim_DR13cat_v1.0.fits").replace("\\", "/")
-                        break
-                    elif catalog_1 == "CSC_2.0":
-                        catalog_1_path = os.path.join(catalog_datapath, "Chandra.fits").replace("\\", "/")
-                        break
-                    elif catalog_1 == "Swift":
-                        catalog_1_path = os.path.join(catalog_datapath, "Swift.fits").replace("\\", "/")
-                        break
-                    elif catalog_1 == "eRASS1":
-                        catalog_1_path = os.path.join(catalog_datapath, "eRASS1.fits").replace("\\", "/")
-                        break
-                    else:
-                        catalog_1 = str(input("Keyword unnaccepted, retry : "))
-                valid_path_1 = get_valid_file_path(catalog_1_path)
-                
-                catalog_2 = str(input("Second catalog : "))
-                while True:
-                    if catalog_2 == "Xmm_DR13":
-                        catalog_2_path = os.path.join(catalog_datapath, "4XMM_slim_DR13cat_v1.0.fits").replace("\\", "/")
-                        break
-                    elif catalog_2 == "CSC_2.0":
-                        catalog_2_path = os.path.join(catalog_datapath, "Chandra.fits").replace("\\", "/")
-                        break
-                    elif catalog_2 == "Swift":
-                        catalog_2_path = os.path.join(catalog_datapath, "Swift.fits").replace("\\", "/")
-                        break
-                    elif catalog_2 == "eRASS1":
-                        catalog_2_path = os.path.join(catalog_datapath, "eRASS1.fits").replace("\\", "/")
-                        break
-                    else:
-                        catalog_2 = str(input("Keyword unnaccepted, retry : "))
-                valid_path_2 = get_valid_file_path(catalog_2_path)
-                
-                valid_path = (valid_path_1, valid_path_2, catalog_1, catalog_2)
-                return valid_path, args_catalog
-            elif args_catalog == "match":
-                return 'matched_catalog', 'match'
             elif args_catalog == "merged":
                 # Merged mode iterates the priority list internally; no single
-                # FITS path to return. Mirrors the placeholder shape used by
-                # `match` mode.
+                # FITS path to return.
                 print(colored("merged mode (XMM > Swift > eRASS1 > Chandra)", "yellow"))
                 return 'merged', 'merged'
             else:
-                raise argparse.ArgumentError(None, "invalid catalog keyword keyword. retry with Xmm_DR13, CSC_2.0, Swift, eRASS1, merged, compare_catalog or match.")
+                raise argparse.ArgumentError(None, "invalid catalog keyword keyword. retry with Xmm_DR13, CSC_2.0, Swift, eRASS1 or merged.")
         except argparse.ArgumentError as error:
             print(f'An error occured : {error}')
             args_catalog = str(input("Enter a new key word : \n"))
@@ -337,7 +293,7 @@ def py_to_xlsx(excel_data_path: str, count_rates: List, object_data: Dict, args:
         count_rates (List[float]): A list of count rates to be saved.
         object_data (Dict): Dictionary containing data about the observed astronomical object.
         args (Tuple[str, str]): Tuple of additional arguments, typically catalog identifiers 
-                                (e.g., 'Xmm_DR13', 'CSC_2.0', 'Swift', 'eRASS1', 'match').
+                                (e.g., 'Xmm_DR13', 'CSC_2.0', 'Swift', 'eRASS1').
         radius (float): Radius parameter related to the data, usually specifying a region of interest around the object.
 
     This function creates an Excel workbook, writes the count rates into it, and saves the file in the specified directory.
@@ -362,8 +318,6 @@ def py_to_xlsx(excel_data_path: str, count_rates: List, object_data: Dict, args:
         cat = "swi"
     elif args[0] == "eRASS1":
         cat = "ero"
-    elif args[0] == "match":
-        cat = "xmmXchandra"
         
     wb = openpyxl.Workbook()
     sheet = wb.active
@@ -408,8 +362,6 @@ def xlsx_to_py(excel_data_path: str, nearby_sources_table: Table, object_data: D
         cat = "swi"
     elif args[0] == "eRASS1":
         cat = "ero"
-    elif args[0] == "match":
-        cat = "xmmXchandra"
         
     ct_rates_path = os.path.join(excel_data_path, f"{cat}_{radius}_{object_data['object_name']}.xlsx".replace(" ", "_"))
     wb = openpyxl.load_workbook(ct_rates_path)

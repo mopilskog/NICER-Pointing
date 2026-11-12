@@ -19,8 +19,6 @@ from catalog_class.XmmClass import XmmCatalog
 from catalog_class.ChandraClass import ChandraCatalog
 from catalog_class.SwiftClass import SwiftCatalog
 from catalog_class.eRASS1Class import eRASS1Catalog
-from catalog_class.CompareCatalogClass import CompareCatalog
-from catalog_class.MatchClass import MatchCatalog
 from catalog_class.MultiCatalogPipeline import MultiCatalogPipeline
 
 # ---------------------------------- #
@@ -52,8 +50,6 @@ import platform
 # from src.catalog_class.ChandraClass import ChandraCatalog
 # from src.catalog_class.SwiftClass import SwiftCatalog
 # from src.catalog_class.eRASS1Class import eRASS1Catalog
-# from src.catalog_class.CompareCatalogClass import CompareCatalog
-# from src.catalog_class.MatchClass import MatchCatalog
 # import src.function.init_function as i_f
 # import src.function.calculation_function as c_f
 # import src.function.software_function as s_f
@@ -91,7 +87,7 @@ def main():
         - --radius, -r : Define the radius of the area to be analyzed.
         - --exp_time, -e_t : Set the exposure time for modeling.
         - --catalog, -ca : Choose the catalog to use for analysis:
-            - Key : Xmm_DR13 / CSC_2.0 / Swift / eRASS1 / merged / match / compare_catalog
+            - Key : Xmm_DR13 / CSC_2.0 / Swift / eRASS1 / merged
         
     Example:
         Here is an example demonstrating the use of the argument:
@@ -293,62 +289,9 @@ def main():
     Upon completion of processing, the script updates the `simulation_data` with key information from the eRASS1 catalog and prepares the data for subsequent analysis stages.
 
 
-    Combined XMM and Chandra Catalog Handling [match]
-    -------------------------------------------------
-    If 'match' is chosen:
-    
-    Functionality:
-        - The script creates a dedicated directory for combined XMM and Chandra data, allowing for an organized approach to handle these two significant sources of astronomical data.
-        - The `MatchCatalog` class is specifically designed to merge and analyze data from both the XMM and Chandra catalogs.
-        - Essential paths and directories are configured to facilitate data processing, storage, and visualization.
-
-    Modeling Spectra with JAXSpec:
-        - The script utilizes the JAXSpec library to model the spectra of astronomical sources.
-        - The spectral model is defined using a combination of absorption (Tbabs) and power-law components.
-        - Instrument parameters for NICER are loaded, and spectra from the combined catalogs are processed and visualized.
-
-    
-    Note:
-        - The combination of XMM and Chandra data provides a broader dataset, enhancing the accuracy and reliability of the optimal pointing analysis.
-        - Care is taken to synchronize data formats and parameters from both catalogs for consistency.
-
-    Important:
-        - Users should ensure that the data from both XMM and Chandra catalogs are up-to-date and correctly formatted.
-        - Modifications in the `MatchCatalog` class or spectral modeling parameters should be approached with caution, as they can significantly impact the results of the analysis.
-
-    After processing, the script outputs spectral plots and exits, completing the analysis for the 'xmmXchandra' catalog choice.
-
-
-    Comparing Data Across Two Catalogs [compare_catalog]
-    ------------------------------------------------------
-
-    This section of the script is dedicated to comparing data across two different astronomical catalogs. This comparison is essential for validating data consistency and accuracy in astronomical studies.
-
-    Functionality:
-        - The script sets up a 'Compare_catalog' directory for the comparison of data between two catalogs. This directory structure facilitates organized data management and analysis.
-        - The `CompareCatalog` class is initialized to handle the comparison process. This class is specifically designed to analyze and contrast data from different catalogs.
-        - Essential directories for storing images and closest catalog data are also created.
-
-    Catalog Comparison Setup:
-        - Configuration settings for the comparison process are stored in `os_dictionary`.
-        - Paths for data, modeling files, and software tools like stilts and topcat are defined to support the comparison process.
-        - The `CompareCatalog` class handles the intricacies of comparing data across catalogs, ensuring the process is efficient and accurate.
-
-    Note:
-        - This comparison approach is crucial for cross-validating observations and results from different sources.
-        - It helps in identifying discrepancies or similarities in data which are key to robust astronomical analysis.
-
-    Important:
-        - Users must ensure that both catalogs involved in the comparison have compatible data formats and are correctly aligned.
-        - Careful consideration is needed when interpreting comparison results, as differences may arise from various observational or processing techniques.
-
-    After executing the comparison process, the script terminates, concluding the analysis for the 'compare_catalog' catalog choice.
-
     Count Rate - Optimal Pointing Point - Vignetting Factor
     =======================================================
     
-    The choice of keys "match" and "compare_catalog" allows the algorithm to perform the necessary calculations within the classes or the dedicated section for these keys.
-
     If the user selects one of the following keys: {"Xmm_DR13", "CSC_2.0", "Swift", "eRASS1"}, then the classes respectively generate the nearby sources table (nearby_sources_table), 
     a list of the positions of these sources (nearby_sources_position), photon index data, hydrogen density column, and a dictionary (model_dictionary) containing the model for determining count rates, 
     the value of this model, the median flux, and Nh.
@@ -479,7 +422,7 @@ def main():
                         help="Enter the exposure time to modeling data")
 
     parser.add_argument('--catalog', '-ca', type=str,
-                        help="Enter catalog keyword : Xmm_DR13/CSC_2.0/Swift/eRASS1/merged/compare_catalog/match")
+                        help="Enter catalog keyword : Xmm_DR13/CSC_2.0/Swift/eRASS1/merged")
 
     parser.add_argument('--interactive','-in', action='store_true', help="Interactive mode toggles plotting and asks for user input regarding file specifications. By default, the system will not show plots, to allow the user to run the program without having to interact with it at runtime.")
 
@@ -668,92 +611,6 @@ def main():
         column_dictionary = result.column_dictionary
         key = result.key
 
-    elif catalog_name == "match":
-        # Find optimal pointing point with using two catalog Xmm and Chandra
-        
-        # creation of match directory
-        mixed_directory = os.path.join(modeling_file_path, 'xmmXchandra'.replace("\\", "/"))
-        mixed_img = os.path.join(mixed_directory, 'img'.replace("\\", "/"))
-        mixed_closest_catalog = os.path.join(mixed_directory, "closest_catalog")
-        if not os.path.exists(mixed_directory):
-            os.mkdir(mixed_directory)
-            os.mkdir(mixed_img)
-            os.mkdir(mixed_closest_catalog)
-        
-        os_dictionary = {"active_workflow": active_workflow,
-                        "data_path": data_path,
-                        "plot_var_sources_path": plot_var_sources_path,
-                        "catalog_datapath": catalog_datapath,
-                        "stilts_software_path": stilts_software_path,
-                        "topcat_software_path": topcat_software_path,
-                        "output_name": output_name,
-                        "modeling_file_path": modeling_file_path,
-                        "catalog_directory": mixed_directory,
-                        "cloesest_dataset_path": mixed_closest_catalog,
-                        "img": mixed_img}
-        
-        simulation_data["os_dictionary"] = os_dictionary
-        os_dictionary["catalog_key"] = "xmmXchandra"
-        
-        # call CatalogMatch Class to make modeling
-        mixed_catalog = MatchCatalog(catalog_name=("Xmm_DR13", "Chandra"), radius=radius, simulation_data=simulation_data)
-        nearby_sources_table = mixed_catalog.nearby_sources_table
-        var_index = mixed_catalog.var_index
-        
-        # --------------- modeling spectra with jaxspec --------------- #
-
-        # setup jaxspec
-        config.update("jax_enable_x64", True)
-        numpyro.set_platform("cpu")
-
-        # define caracteristic model here --> exp(-nh*$\sigma$) * x ** (-$\Gamma$)
-        model = Tbabs() * Powerlaw()
-
-        # load instrument parameters
-        instrument = Instrument.from_ogip_file(nicer_data_rmf, nicer_data_arf)
-        obsconfig= ObsConfiguration.mock_from_instrument(instrument, exposure=args.exp_time)
-        # load all of the sources spetcra
-        #total_spectra, total_var_spectra = j_f.modeling_source_spectra(nearby_sources_table=nearby_sources_table, instrument=instrument, model=model, var_index=var_index)
-        total_spectra, total_var_spectra = j_f.modeling_source_spectra(nearby_sources_table=nearby_sources_table, obsconfig=obsconfig, model=model, var_index=var_index)
-        # plot of all spectra data
-        #data = j_f.total_plot_spectra(total_spectra=total_spectra, total_var_spectra=total_var_spectra, instrument=instrument, simulation_data=simulation_data, catalog_name="xmmXchandra")
-        data = j_f.total_plot_spectra(total_spectra=total_spectra, total_var_spectra=total_var_spectra,obsconfig=obsconfig, simulation_data=simulation_data, catalog_name="xmmXchandra")
-        # output spectre plot
-        j_f.write_txt_file(simulation_data=simulation_data, data=data)
-        
-        # ------------------------------------------------------------- # 
-        
-        sys.exit()
-
-    elif catalog_name == "compare_catalog":
-        # Find the optimal pointing point with two catalogs to compare data
-        
-        # creation of compare_catalog directory
-        compare_catalog_directory = os.path.join(modeling_file_path, 'Compare_catalog'.replace("\\", "/"))
-        compare_catalog_img = os.path.join(compare_catalog_directory, 'img'.replace("\\", "/"))
-        compare_catalog_closest_catalog = os.path.join(compare_catalog_directory, "closest_catalog")
-        if not os.path.exists(compare_catalog_directory):
-            os.mkdir(compare_catalog_directory)
-            os.mkdir(compare_catalog_img)
-            os.mkdir(compare_catalog_closest_catalog)
-        
-        os_dictionary = {"active_workflow": active_workflow,
-                        "data_path": data_path,
-                        "modeling_file_path": modeling_file_path,
-                        "catalog_datapath": catalog_datapath,
-                        "output_name": output_name,
-                        "plot_var_sources_path": plot_var_sources_path,
-                        "stilts_software_path": stilts_software_path,
-                        "catalog_directory": compare_catalog_directory,
-                        "cloesest_dataset_path": compare_catalog_closest_catalog,
-                        "img": compare_catalog_img}
-        
-        simulation_data["os_dictionary"] = os_dictionary
-        
-        # call CompareCatalog Class to make calculation
-        compare_class = CompareCatalog(catalog_path=catalog_path, radius=radius, simulation_data=simulation_data, exp_time=args.exp_time)
-        sys.exit()
-        
     else:
         print(f"{colored('Invalid key workd !', 'red')}")
         sys.exit()

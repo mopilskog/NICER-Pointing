@@ -233,10 +233,6 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
     .. image:: C:/Users/plamb_v00y0i4/OneDrive/Bureau/Optimal_Pointing_Point_Code/modeling_result/PSR_J0437-4715/Chandra/img/CS_Chandra_spectral_modeling_close_to_PSR_J0437-4715.png
         :align: center
     
-    Here is an example of the plot create by this method for MatchClass:
-        
-    .. image:: C:/Users/plamb_v00y0i4/OneDrive/Bureau/Optimal_Pointing_Point_Code/modeling_result/PSR_J0437-4715/xmmXchandra/img/xmmXchandra_spectral_modeling_close_to_PSR_J0437-4715.png
-        :align: center
     """
     
     object_data = simulation_data["object_data"]
