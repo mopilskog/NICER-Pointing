@@ -361,7 +361,7 @@ class XmmCatalog:
         yerr_array = [num/det for num, det in zip(flux_err_obs, tab_width)]
         
         try:
-            popt, pcov = curve_fit(absorbed_power_law, energy_band, y_array, sigma=yerr_array)
+            popt, pcov = curve_fit(absorbed_power_law, energy_band, y_array, sigma=yerr_array, absolute_sigma=True)
             constant, absorb_pho_index = popt
             perr = np.sqrt(np.diag(pcov))
             perr = perr[1]
@@ -494,9 +494,14 @@ class XmmCatalog:
         for number in range(len(name_list)):
             if self.USE_XMM2ATHENA and index_table["Index in x2a"][number] != "No data found":
 
-                nh_value = self.x2a_catalog["logNH_med"][number]
-                nh_value_min = self.x2a_catalog["logNH_med_min"][number]
-                nh_value_max = self.x2a_catalog["logNH_med_max"][number]
+                # Row of this source in the full Xmm2Athena catalog, matched via
+                # DR11 DETID above. Stored as text because the column also holds
+                # "No data found".
+                x2a_row = int(index_table["Index in x2a"][number])
+
+                nh_value = self.x2a_catalog["logNH_med"][x2a_row]
+                nh_value_min = self.x2a_catalog["logNH_med_min"][x2a_row]
+                nh_value_max = self.x2a_catalog["logNH_med_max"][x2a_row]
 
                 column_nh = np.append(column_nh, np.exp(nh_value * np.log(10)))
                 column_nh_min = np.append(column_nh_min, np.exp(nh_value_min * np.log(10)))
@@ -506,14 +511,18 @@ class XmmCatalog:
                 transformed_nh_min = np.exp(nh_value_min * np.log(10))
                 transformed_nh_max = np.exp(nh_value_max * np.log(10))
                 
-                column_phoindex = np.append(column_phoindex, self.x2a_catalog['PhoIndex_med'][number])
-                pho_index_min_med = np.append(pho_index_min_med, self.x2a_catalog['PhoIndex_med_min'][number])
-                pho_index_max_med = np.append(pho_index_max_med, self.x2a_catalog['PhoIndex_med_max'][number])
-                
+                column_phoindex = np.append(column_phoindex, self.x2a_catalog['PhoIndex_med'][x2a_row])
+                pho_index_min_med = np.append(pho_index_min_med, self.x2a_catalog['PhoIndex_med_min'][x2a_row])
+                pho_index_max_med = np.append(pho_index_max_med, self.x2a_catalog['PhoIndex_med_max'][x2a_row])
+
                 # Retrieve the photon index values for printing
-                pho_index = self.x2a_catalog['PhoIndex_med'][number]
-                pho_index_min = self.x2a_catalog['PhoIndex_med_min'][number]
-                pho_index_max = self.x2a_catalog['PhoIndex_med_max'][number]
+                pho_index = self.x2a_catalog['PhoIndex_med'][x2a_row]
+                pho_index_min = self.x2a_catalog['PhoIndex_med_min'][x2a_row]
+                pho_index_max = self.x2a_catalog['PhoIndex_med_max'][x2a_row]
+
+                # Symmetric photon-index error from the x2a min/max range, so the
+                # "Photon Index Error" column has one entry per source.
+                column_phoindex_err = np.append(column_phoindex_err, (pho_index_max - pho_index_min) / 2)
 
                       
             else:
@@ -579,6 +588,8 @@ class XmmCatalog:
     
         for name, data in zip(col_names, col_data):
             self.nearby_sources_table[name] = data
+
+        c_f.apply_bad_fit_default(self.nearby_sources_table, iauname_col="IAUNAME")
 
         return self.nearby_sources_table, index_table
     

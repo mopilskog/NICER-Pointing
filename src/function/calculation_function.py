@@ -121,6 +121,36 @@ def exclude_target_from_nearby_sources(nearby_sources_table: Table,
     return nearby_sources_table, sources_position
 
 
+def apply_bad_fit_default(table: Table,
+                          iauname_col: str,
+                          threshold: float = 2.0,
+                          default_photon_index: float = 1.7) -> Table:
+    """Replace badly fitted photon indices with a fixed default.
+
+    Called by each catalog class right after its photon-index fit. A
+    ``Photon Index Error`` above ``threshold`` means the band-flux fit is
+    unreliable, so the row gets ``Photon Index = default_photon_index`` and
+    ``Photon Index Error = 0``. The catalog class then builds its
+    model_dictionary from this table, so the PIMMS count rate, the output
+    FITS table and the jaxspec spectrum all use the same default.
+
+    Returns the same table, modified in place.
+    """
+    for index in range(len(table)):
+        pho_idx = float(table["Photon Index"][index])
+        pho_idx_err = float(table["Photon Index Error"][index])
+        if pho_idx_err > threshold:
+            print(colored(
+                f"  Bad fit for {str(table[iauname_col][index]).strip()} "
+                f"(PhI={pho_idx:.3f} ± {pho_idx_err:.3f}); using default "
+                f"PhI={default_photon_index}, error 0.",
+                'yellow'
+            ))
+            table["Photon Index"][index] = default_photon_index
+            table["Photon Index Error"][index] = 0.0
+    return table
+
+
 def signal_to_noise(SrcCtsRate, BkgSrcRates, InstBkgd, ExpTime) -> float:
     """
     Calculate the signal-to-noise ratio (S/N) given various parameters.
@@ -357,7 +387,7 @@ def count_rates(nearby_src_table, model_dictionary, telescop_data) -> Tuple[List
         xmm_flux =  model_dictionary[f"src_{item}"]["flux"]
         nh_value = model_dictionary[f"src_{item}"]["column_dentsity"]
                 
-        pimms_cmds = f"instrument {telescop_name} {min_value}-{max_value}\nfrom flux ERGS {energy_band}\nmodel galactic nh {nh_value}\nmodel {model} {model_value} 0.0\ngo {xmm_flux}\nexit\n"
+        pimms_cmds = f"instrument {telescop_name} {min_value}-{max_value}\nfrom flux ERGS {energy_band}\nmodel {model} {model_value} {nh_value}\ngo {xmm_flux}\nexit\n"
         
         with open('pimms_script.xco', 'w') as file:
             file.write(pimms_cmds)

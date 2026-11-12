@@ -640,7 +640,7 @@ class ChandraCatalog:
         yerr_array = [num/det for num, det in zip(flux_err_obs, tab_width)]
         
         try:
-            popt, pcov = curve_fit(absorbed_power_law, interp_data["energy_band_center"], y_array, sigma=yerr_array)
+            popt, pcov = curve_fit(absorbed_power_law, interp_data["energy_band_center"], y_array, sigma=yerr_array, absolute_sigma=True)
             constant, photon_index = popt
             perr = np.sqrt(np.diag(pcov))
             p_err = perr[1]
@@ -694,7 +694,6 @@ class ChandraCatalog:
                 cs_perr_list.append(0.0)
             else:
                 photon, params, perr = self.optim_index(key=cs_key, table=self.cone_search_catalog, index=index)
-                photon = photon if photon > 0.0 else 1.7
                 cs_parameters_list.append(params)
                 cs_photon_index_list.append(photon)
                 cs_perr_list.append(perr)
@@ -717,7 +716,6 @@ class ChandraCatalog:
                 print(f"Index : {index} - Name : {name}")
                 #else:
                 photon , params, perr = self.optim_index(key=key, table=self.nearby_sources_table, index=nearby_index)
-                photon = photon if photon > 0.0 else 1.7
                 parameters_list.append(params)
                 photon_index_list.append(photon)
                 perr_list.append(perr)
@@ -746,7 +744,10 @@ class ChandraCatalog:
         self.cone_search_catalog["Photon Index"] = cs_photon_index_list
         self.cone_search_catalog['Nh'] = self.cs_nh_list
         self.cone_search_catalog["Photon Index Error"] = cs_perr_list
-            
+
+        c_f.apply_bad_fit_default(self.nearby_sources_table, iauname_col="Chandra_IAUNAME")
+        c_f.apply_bad_fit_default(self.cone_search_catalog, iauname_col="name")
+
         return cs_photon_index_list, photon_index_list
                 
   

@@ -383,7 +383,7 @@ class eRASS1Catalog:
         yerr_array = [num/det for num, det in zip(flux_err_obs, tab_width)]
         
         try:
-            popt, pcov = curve_fit(absorbed_power_law, interp_data["energy_band_center"], y_array, sigma=yerr_array)
+            popt, pcov = curve_fit(absorbed_power_law, interp_data["energy_band_center"], y_array, sigma=yerr_array, absolute_sigma=True)
             constant, absorb_pho_index = popt
             perr = np.sqrt(np.diag(pcov))
             perr = perr[1]
@@ -411,7 +411,8 @@ class eRASS1Catalog:
 
         Note:
             - A default Nh value of 3e20 is used if specific Nh data is not available.
-            - The photon index calculation defaults to a value of 1.7 if the computed index is negative or zero.
+            - Negative or zero photon indices from the fit are kept. The photon index defaults to 1.7 (error 0)
+              if the fit fails or its error is above 2 (see c_f.apply_bad_fit_default).
             - Visualization of photon indices aids in understanding the spectral characteristics of the sources.
 
         The method plays a crucial role in spectral analysis, allowing for a detailed examination of the high-energy properties 
@@ -432,7 +433,7 @@ class eRASS1Catalog:
             nh_list.append(nhi_value)
             
             photon, perr, params = self.optim_index(table=self.nearby_sources_table, key=key, index=index)
-            photon_index_list.append(photon if photon > 0.0 else 1.7)
+            photon_index_list.append(photon)
             parameters_list.append(params)
             perr_list.append(perr)
         
@@ -441,7 +442,9 @@ class eRASS1Catalog:
         self.nearby_sources_table["Photon Index"] = photon_index_list
         self.nearby_sources_table["Photon Index Error"] = perr_list
         self.nearby_sources_table["Nh"] = nh_list
-        
+
+        c_f.apply_bad_fit_default(self.nearby_sources_table, iauname_col="eRASS_IAUNAME")
+
         return photon_index_list
     
     
