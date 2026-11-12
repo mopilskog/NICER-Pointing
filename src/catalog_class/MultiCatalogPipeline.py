@@ -32,6 +32,12 @@ import catalog_information as dict_cat
 # object reference, not catalog physics) and the output directory name (a
 # workflow concern). Everything else (RA/DEC/IAU column names, band fluxes,
 # energy bands) is read from dict_cat.dictionary_catalog and dict_cat.dictionary_coord.
+# Intra-observation variability: an XMM detection with VAR_FLAG True has its
+# flux bounds stretched by K_FVAR x FVAR (fractional rms within the
+# observation). K_FVAR = 1 covers the typical excursion; see
+# _attach_variability_info.
+K_FVAR = 1.0
+
 CATALOG_REGISTRY: Dict[str, Dict] = {
     "XMM":     {"class": XmmCatalog,     "directory_name": "4XMM_DR13",
                 "catalog_filename": "4XMM_slim_DR13cat_v1.0.fits"},
@@ -867,19 +873,29 @@ class MultiCatalogPipeline:
                 flux_arr = np.asarray(ms.sources_flux)[valid_mask]
                 err_neg = np.asarray(ms.sources_error_bar[0])[valid_mask]
                 err_pos = np.asarray(ms.sources_error_bar[1])[valid_mask]
+                fvar = np.asarray(getattr(ms, "sources_fvar", np.zeros(len(ms.sources_flux))))[valid_mask]
                 lower_candidates = np.where(
                     flux_arr - err_neg > 0,
                     flux_arr - err_neg,
                     flux_arr,
                 )
                 upper_candidates = flux_arr + err_pos
+                # Intra-observation variability (XMM detections with
+                # VAR_FLAG True): stretch that detection's bounds by
+                # K_FVAR x FVAR, the fractional rms within the observation.
+                # Clipped so the lower bound stays positive.
+                stretch = np.clip(K_FVAR * fvar, 0.0, 0.99)
+                lower_candidates = lower_candidates * (1.0 - stretch)
+                upper_candidates = upper_candidates * (1.0 + stretch)
                 row["var_ratio"] = float(ms.var_ratio)
                 row["flux_min"] = float(np.min(lower_candidates))
                 row["flux_max"] = float(np.max(upper_candidates))
+                row["short_term_var"] = bool(ms.has_short_term_var)
             else:
                 row["var_ratio"] = 1.0
                 row["flux_min"] = float(row["flux"])
                 row["flux_max"] = float(row["flux"])
+                row["short_term_var"] = False
 
     def _run_merged(self) -> PipelineResult:
         """Iterate the priority list, instantiate each catalog class, deduplicate
@@ -1015,7 +1031,7 @@ class MultiCatalogPipeline:
         column_names = [
             "MS_ID", "origin_catalog", "RA", "DEC", "iau_name",
             "Photon Index", "Photon Index Error", "Nh", "flux",
-            "var_ratio", "flux_min", "flux_max",
+            "var_ratio", "flux_min", "flux_max", "short_term_var",
             "extra_detections",
         ]
         column_data = {

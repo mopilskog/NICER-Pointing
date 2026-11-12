@@ -285,9 +285,14 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
         fmin_col = np.array(nearby_table_var["flux_min"], dtype=float)
         fmax_col = np.array(nearby_table_var["flux_max"], dtype=float)
         f_col = np.array(nearby_table_var["flux"], dtype=float)
+        # Intra-observation (XMM VAR_FLAG) variability also switches the
+        # envelope on, even when there is no change between observations.
+        stv_col = (np.array(nearby_table_var["short_term_var"], dtype=bool)
+                   if "short_term_var" in nearby_table_var.colnames
+                   else np.zeros(len(f_col), dtype=bool))
         for i in range(len(total_spectra)):
             var_ratios[i] = float(vr_col[i])
-            if vr_col[i] > 1.0 and f_col[i] > 0.0:
+            if (vr_col[i] > 1.0 or stv_col[i]) and f_col[i] > 0.0:
                 var_flags[i] = True
                 ratio_lower[i] = float(fmin_col[i] / f_col[i])
                 ratio_upper[i] = float(fmax_col[i] / f_col[i])

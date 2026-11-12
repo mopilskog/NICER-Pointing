@@ -25,6 +25,12 @@ for index, cat in enumerate(catalogs):
 dictionary_catalog = {
 "XMM":{"flux_obs":"SC_EP_8_FLUX",
         "flux_obs_err": ["SC_EP_8_FLUX_ERR", "SC_EP_8_FLUX_ERR"],
+        # Per-detection (single-observation) flux, used only for variability in
+        # software_function.load_relevant_sources. SC_EP_8_FLUX is the average
+        # over all detections of the source, so it would hide any change
+        # between observations.
+        "flux_obs_det": "EP_8_FLUX",
+        "flux_obs_err_det": ["EP_8_FLUX_ERR", "EP_8_FLUX_ERR"],
         "conv_factor": 1/0.999,
         "time_name": "MJD_START",
         "obsid_name": "OBS_ID",

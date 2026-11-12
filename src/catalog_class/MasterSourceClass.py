@@ -229,6 +229,10 @@ class Source:
         self.swift_data = kwargs.get('swift_data', SwiftData([], [], []))
         self.xmm_offaxis = kwargs.get('xmm_offaxis', [])
         self.short_term_var = kwargs.get('short_term_var', [])
+        # Per-detection fractional rms variability within the observation
+        # (XMM FVAR, only where VAR_FLAG is True; 0 otherwise). Empty for
+        # catalogs without this information.
+        self.short_term_fvar = kwargs.get('short_term_fvar', [])
 
         self.hardness_ratio(catalog=catalog)
         self.swift_modif(flux=flux, flux_err=flux_err)
@@ -305,15 +309,15 @@ class Source:
         self.min_upper, self.max_lower = 1, 0
         self.var = 1
         if len(flux) > 0:
-            min_upper = min(np.array(flux) + np.array(flux_err[1]))
-            max_lower = max(np.array(flux) - np.array(flux_err[0]))
-        if self.swift_stacked_flux != []:
+            self.min_upper = min(np.array(flux) + np.array(flux_err[1]))
+            self.max_lower = max(np.array(flux) - np.array(flux_err[0]))
+        if len(self.swift_stacked_flux) > 0:
             stacked_min = min(np.array(self.swift_stacked_flux)+np.array(self.swift_stacked_flux_err[1]))
             if stacked_min<0.5*self.min_upper:
                 self.swift_stacked_variable = True
             self.min_upper = min(self.min_upper, stacked_min)
         if len(flux) + len(self.swift_stacked_flux) > 1:
-            self.var = max_lower/min_upper
+            self.var = self.max_lower/self.min_upper
 
 
 class MasterSource:
@@ -504,6 +508,9 @@ class MasterSource:
         self.src_id = src_id
         self.sources, self.sources_flux, self.sources_error_bar = {}, [], [[], []]
         self.sources_time_steps, self.sources_var = [], []
+        # Short-term (intra-observation) fractional variability per entry of
+        # sources_flux: XMM FVAR where VAR_FLAG is True, 0 otherwise.
+        self.sources_fvar = []
         self.tab_hr, self.tab_hr_err = [], [[], []]
         self.never_on_axis_xmm, self.has_short_term_var = False, False
         self.min_time, self.max_time = 60000, 0
@@ -533,8 +540,9 @@ class MasterSource:
             source.master_source = self
             self.sources[source.catalog] = source
             
-            for (flux, flux_err_neg, flux_err_pos, time_step) in zip(source.flux, source.flux_err[0], source.flux_err[1], source.time_steps):
+            for (det, (flux, flux_err_neg, flux_err_pos, time_step)) in enumerate(zip(source.flux, source.flux_err[0], source.flux_err[1], source.time_steps)):
                 self.sources_flux.append(flux)
+                self.sources_fvar.append(float(source.short_term_fvar[det]) if det < len(source.short_term_fvar) else 0.0)
                 self.sources_error_bar[0].append(flux_err_neg)
                 self.sources_error_bar[1].append(flux_err_pos)
                 self.sources_var.append(source.var)
@@ -550,6 +558,7 @@ class MasterSource:
                 self.min_time = min(start, self.min_time)
                 self.max_time = max(stop, self.max_time)
                 self.sources_time_steps.append((start + stop)/2)
+                self.sources_fvar.append(0.0)
                 
             if source.xmm_offaxis!=[]:
                 if np.nanmin(source.xmm_offaxis)>1:
@@ -562,6 +571,7 @@ class MasterSource:
                     self.has_short_term_var=True
         self.sources_flux = np.array(self.sources_flux)
         self.sources_error_bar = np.array(self.sources_error_bar)
+        self.sources_fvar = np.array(self.sources_fvar, dtype=float)
         
         self.min_upper, self.max_lower, self.var_ratio = 1, 0, 1
         self.var_amplitude, self.var_significance = 0, 0

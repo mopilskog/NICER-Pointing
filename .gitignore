@@ -146,7 +146,7 @@ dmypy.json
 data/catalog_data/
 data/NICER_data/
 data/softwares/
-
+notes
 # Ignoring Maps directory
 Maps/
 

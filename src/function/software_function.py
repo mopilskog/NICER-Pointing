@@ -93,14 +93,38 @@ def load_relevant_sources(cat: str, file_to_load: str) -> Dict:
     if cat in ("XMM", "Swift", "Stacked"):
         obs_ids = np.split(np.array(sources_raw[dict_cat.dictionary_catalog[cat]["obsid_name"]]), indices_for_source)
     else:
-        obs_ids = [[] for elt in indices_for_source]
+        obs_ids = [[] for elt in range(len(indices_for_source) + 1)]  # one per source
     names = np.split(np.array(sources_raw[dict_cat.src_names[cat]]), indices_for_source)
 
     band_flux, band_flux_errors_pos, band_flux_errors_neg = [], [], []
     
-    flux = np.split(dict_cat.dictionary_catalog[cat]["conv_factor"]*np.array(sources_raw[dict_cat.dictionary_catalog[cat]["flux_obs"]]), indices_for_source)
-    flux_errors_neg = np.split(dict_cat.dictionary_catalog[cat]["conv_factor"]*np.array(sources_raw[dict_cat.dictionary_catalog[cat]["flux_obs_err"][0]]), indices_for_source)
-    flux_errors_pos = np.split(dict_cat.dictionary_catalog[cat]["conv_factor"]*np.array(sources_raw[dict_cat.dictionary_catalog[cat]["flux_obs_err"][1]]), indices_for_source)
+    # Per-detection flux columns where the catalog defines them (XMM: EP_8_FLUX),
+    # otherwise the catalog's usual flux columns.
+    cat_info = dict_cat.dictionary_catalog[cat]
+    flux_col = cat_info.get("flux_obs_det", cat_info["flux_obs"])
+    flux_err_cols = cat_info.get("flux_obs_err_det", cat_info["flux_obs_err"])
+    flux = np.split(cat_info["conv_factor"]*np.array(sources_raw[flux_col]), indices_for_source)
+    flux_errors_neg = np.split(cat_info["conv_factor"]*np.array(sources_raw[flux_err_cols[0]]), indices_for_source)
+    flux_errors_pos = np.split(cat_info["conv_factor"]*np.array(sources_raw[flux_err_cols[1]]), indices_for_source)
+
+    # Intra-observation (short-term) variability, XMM only: VAR_FLAG is XMM's
+    # chi2 test of the light curve within one observation. FVAR (fractional rms
+    # within the observation) is kept only where VAR_FLAG is True, since for
+    # steady sources it is dominated by noise. Per detection, the largest of
+    # the PN/MOS1/MOS2 values is used.
+    if cat == "XMM":
+        def _as_float(col):
+            col = sources_raw[col]
+            return np.array(col.filled(np.nan) if hasattr(col, "filled") else col, dtype=float)
+        var_flag = np.array(sources_raw["VAR_FLAG"], dtype=bool)
+        fvar = np.nanmax(np.vstack([_as_float(c) for c in ("PN_FVAR", "M1_FVAR", "M2_FVAR")]), axis=0) \
+            if len(sources_raw) else np.array([])
+        fvar = np.where(var_flag & np.isfinite(fvar), fvar, 0.0)
+        short_term_var = np.split(var_flag.astype(int), indices_for_source)
+        short_term_fvar = np.split(fvar, indices_for_source)
+    else:
+        short_term_var = [[] for _ in range(len(flux))]
+        short_term_fvar = [[] for _ in range(len(flux))]
     flux_errors = [[flux_neg, flux_pos] for (flux_neg, flux_pos) in zip(flux_errors_neg, flux_errors_pos)]
 
     band_flux_obs = dict_cat.dictionary_catalog[cat]["band_flux_obs"] #band_flux_obs_err
@@ -145,7 +169,8 @@ def load_relevant_sources(cat: str, file_to_load: str) -> Dict:
             band_data = MasterSourceClass.BandFlux(flux=band_flux, flux_err=band_flux_err)
             swift_data = MasterSourceClass.SwiftData(stacked_flux=swift_stacked_flux, stacked_flux_err=swift_stacked_flux_err, stacked_times=swift_stacked_times)
             source = MasterSourceClass.Source(catalog=cat, iau_name=name[0].strip(), flux=flux, flux_err=flux_error, time_steps=time, 
-                            band_flux_data=band_data, obsids=[...], swift_data=swift_data, xmm_offaxis=[], short_term_var=[])
+                            band_flux_data=band_data, obs_id=obsid, swift_data=swift_data, xmm_offaxis=[],
+                            short_term_var=list(short_term_var[index]), short_term_fvar=list(short_term_fvar[index]))
             # **kwargs : obsids, swift_data, xmm_offaxis, short_term_var
             
             dict_sources[name[0].strip()] = source
