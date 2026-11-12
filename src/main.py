@@ -357,16 +357,7 @@ def main():
     Important:
         - Ensure that you have the necessary data files, including 'Master_source_cone.fits', 'arf', and 'rmf', to perform spectral modeling.
 
-    Initially, we have the table of nearby sources and the table of variable sources at our disposal. We need to determine which of our nearby sources are variable. 
-    To do this, we will use the 'Master_source_cone.fits' table to find them. To achieve this, we will use the 'j_f.cross_catalog_index' function from the 'jaxspec_function.py' 
-    module. This function is used to create a list of indices for the variable sources based on the nearby sources table.
-
-    Example:
-        Use j_f.cross_catalog function -->
-
-        >>> var_index =  j_f.cross_catalog_index(output_name=output_name, key=key, iauname=column_dictionary["data_to_vignetting"][2], nearby_sources_table=nearby_sources_table)
-
-    Next, we will define a model to generate these spectra and load the NICER instrument parameters (the .arf and .rmf files).
+    First, we define a model to generate these spectra and load the NICER instrument parameters (the .arf and .rmf files).
 
     Example:
         >>> model = Tbabs() * Powerlaw()
@@ -377,14 +368,14 @@ def main():
     Example:
         Use j_f.modeling_source_spectra function -->
 
-        >>> total_spectra, total_var_spectra = j_f.modeling_source_spectra(nearby_sources_table=nearby_sources_table, instrument=instrument, model=model, var_index=var_index)
+        >>> total_spectra = j_f.modeling_source_spectra(nearby_sources_table=nearby_sources_table, obsconfig=obsconfig, model=model, key=key)
 
     Once these spectra are obtained, we can plot the different spectra of these sources as well as the sum of contributions using the 'j_f.total_plot_spectra' function from the 'jaxspec_function.py' module.
 
     Example:
         Use j_f.total_plot_spectra function ->
 
-        >>> data = j_f.total_plot_spectra(total_spectra=total_spectra, total_var_spectra=total_var_spectra, instrument=instrument, simulation_data=simulation_data, catalog_name=args.catalog)
+        >>> data = j_f.total_plot_spectra(total_spectra=total_spectra, obsconfig=obsconfig, simulation_data=simulation_data, catalog_name=args.catalog)
 
     Here is an example of this plot :
 
@@ -726,8 +717,6 @@ def main():
 
     # --------------- modeling spectra with jaxspec --------------- #
 
-    var_index =  j_f.cross_catalog_index(output_name=output_name, key=key, iauname=column_dictionary["data_to_vignetting"][2], nearby_sources_table=nearby_sources_table)
-
     # setup jaxspec
     config.update("jax_enable_x64", True)
     numpyro.set_platform("cpu")
@@ -745,11 +734,10 @@ def main():
     #obsconfig = ObsConfiguration.from_instrument(instrument, observation)
     
     # load all of the sources spetcra
-    total_spectra, total_var_spectra = j_f.modeling_source_spectra(nearby_sources_table=nearby_sources_table, obsconfig=obsconfig, model=model, var_index=var_index, key=key)
-    #total_spectra, total_var_spectra = j_f.modeling_source_spectra(nearby_sources_table=nearby_sources_table, instrument=instrument, model=model, var_index=var_index)
+    total_spectra = j_f.modeling_source_spectra(nearby_sources_table=nearby_sources_table, obsconfig=obsconfig, model=model, key=key)
     
     # plot of all spectra data
-    data = j_f.total_plot_spectra(total_spectra=total_spectra, total_var_spectra=total_var_spectra,obsconfig=obsconfig, simulation_data=simulation_data, catalog_name=args.catalog)
+    data = j_f.total_plot_spectra(total_spectra=total_spectra, obsconfig=obsconfig, simulation_data=simulation_data, catalog_name=args.catalog)
 
     # output spectre plot
     j_f.write_txt_file(simulation_data=simulation_data, data=data)

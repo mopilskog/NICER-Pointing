@@ -29,7 +29,6 @@ logging.getLogger("matplotlib.texmanager").setLevel(logging.WARNING)
 This module provides functions for astronomical data analysis and spectral modeling. It leverages the astropy library for handling astronomical data tables and FITS files, and uses jaxspec for spectral modeling.
 
 Functions:
-- cross_catalog_index: Determines the indices in a nearby sources table that correspond to sources found in a master source cone file.
 - modeling_source_spectra: Generates model spectra for sources in a nearby sources table using specified instrument and model parameters.
 - total_plot_spectra: Creates and saves a plot of spectral modeling data from a specified catalog and returns spectral data.
 - write_txt_file: Writes the spectral modeling data into a formatted text file.
@@ -41,53 +40,6 @@ Note:
 - It requires a proper understanding of astronomical data formats, spectral analysis techniques, and the specific instruments and models involved in the spectral data generation.
 """
 
-
-def cross_catalog_index(output_name: str, key: str, iauname: str, nearby_sources_table: Table) -> List:
-    """
-    Identifies indices in a nearby sources table corresponding to sources from a master source cone file.
-
-    This function is designed for astronomical data analysis, particularly for cross-catalog matching. It reads 
-    a master source cone FITS file located at the specified directory, extracts source names, and then matches 
-    these names with those in the provided nearby sources table to determine corresponding indices.
-
-    Args:
-        output_name (str): Directory path where the master source cone file is located.
-        key (str): Key representing the catalog (e.g., 'CS_Chandra' or 'Chandra').
-        iauname (str): Column name in the nearby sources table representing the IAU name of sources.
-        nearby_sources_table (Table): An astropy Table object containing data about nearby sources.
-
-    Returns:
-        List[int]: A list of indices from the nearby sources table. These indices correspond to the sources 
-                   found in the master source cone file.
-
-    Note:
-        - The function is specific to astronomical data analysis and is used for matching sources across different catalogs.
-        - It assumes the master source cone file is in the FITS format and contains a key column that matches the 'key' argument.
-    """
-    
-    # Merged mode: variability cross-matching is deferred (decision #6). Return
-    # an empty list so modeling_source_spectra populates an empty
-    # total_var_spectra; the spectrum plot no longer uses it after Commit B.
-    if key == "merged":
-        return []
-
-    master_source_cone_path = os.path.join(output_name, "Master_source_cone.fits").replace("\\", "/")
-    with fits.open(master_source_cone_path) as data:
-        master_source_cone = Table(data[1].data)
-
-    if key == "CS_Chandra":
-        key = "Chandra"
-
-    msc_name = [name for name in master_source_cone[key] if name != ""]
-    var_index_in_nearby_sources_table = []
-    for name in msc_name:
-        a = nearby_sources_table[iauname]
-        b = (nearby_sources_table[iauname] == name)
-        if name in nearby_sources_table[iauname]:
-            index_in_table = list(nearby_sources_table[iauname]).index(name)
-            var_index_in_nearby_sources_table.append(index_in_table)
-
-    return var_index_in_nearby_sources_table
 
 def source_flux_and_name(nearby_sources_table: Table, index, key):
     """Observed flux (erg/cm²/s) and IAU-name column for a source. Column names
@@ -119,7 +71,7 @@ def norm_for_alpha_samples(model, nh_over_1e22, target_flux, alpha_samples):
         norm_uniq[i] = (target_flux / g.to(u.erg / u.cm**2 / u.s)).to_value(u.dimensionless_unscaled)
     return norm_uniq[inverse]
 
-def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_index, key) -> List:
+def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, key) -> List:
     """
     Generates model spectra for astronomical sources using specified instrument and model parameters.
 
@@ -132,12 +84,10 @@ def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_i
         nearby_sources_table (Table): An astropy Table containing data of nearby astronomical sources.
         obsconfig: An ObsConfiguration object containing the data  of the folding model, which is the link between the unfolded and folded spectra.
         model: The spectral model to be applied for spectra generation.
-        var_index (List[int]): Indices of variable sources in the nearby sources table.
+        key (str): Catalog key (e.g. 'XMM', 'merged'), used to find the flux and name columns.
 
     Returns:
-        Tuple[List, List]: A tuple containing two lists: 
-                            - The first list is the total spectra for all sources.
-                            - The second list is the total variable spectra for variable sources.
+        List: One array of simulated spectra per source (one row per photon-index sample).
 
     Note:
         - The function expects 'vignetting_factor', 'Nh', and 'Photon Index' columns in the nearby sources table.
@@ -146,7 +96,6 @@ def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_i
     """
     print(f"\n{colored('Modeling spectra...', 'yellow', attrs=['underline'])}")
     total_spectra = []
-    total_var_spectra = []
     size = 100
 
     for index, vignet_factor in tqdm(enumerate(nearby_sources_table["vignetting_factor"])):
@@ -188,15 +137,12 @@ def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, var_i
 
         spectra = fakeit_for_multiple_parameters(obsconfig, model, parameters) * vignet_factor
 
-        if index in var_index:
-            total_var_spectra.append(spectra)
-
         total_spectra.append(spectra)
 
-    return total_spectra, total_var_spectra
+    return total_spectra
 
 
-def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, simulation_data: Dict, catalog_name: str) -> Dict:
+def total_plot_spectra(total_spectra: List, obsconfig, simulation_data: Dict, catalog_name: str) -> Dict:
     """
     Generates and saves a plot of spectral modeling data and returns a summary of the spectral data.
 
@@ -206,7 +152,6 @@ def total_plot_spectra(total_spectra: List, total_var_spectra: List, obsconfig, 
 
     Args:
         total_spectra (List): A list containing spectra from nearby sources.
-        total_var_spectra (List): A list containing variability spectra data.
         obsconfig: An ObsConfiguration object containing the data  of the folding model, which is the link between the unfolded and folded spectra.
         simulation_data (Dict): Dictionary containing simulation parameters and paths.
         catalog_name (str): Name of the catalog used for spectral modeling.
