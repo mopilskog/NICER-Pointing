@@ -375,20 +375,20 @@ def main():
     Example:
         Use j_f.total_plot_spectra function ->
 
-        >>> data = j_f.total_plot_spectra(total_spectra=total_spectra, obsconfig=obsconfig, simulation_data=simulation_data, catalog_name=args.catalog)
+        >>> j_f.total_plot_spectra(total_spectra=total_spectra, obsconfig=obsconfig, simulation_data=simulation_data, catalog_name=args.catalog)
 
     Here is an example of this plot :
 
     .. image:: C:/Users/plamb_v00y0i4/OneDrive/Bureau/Optimal_Pointing_Point_Code/modeling_result/PSR_J0437-4715/4XMM_DR13/img/XMM_spectral_modeling_close_to_PSR_J0437-4715.png
         :align: center
 
-    In this graph, we have an envelope of variability from the variable sources in the modeling. The last function we use, 'j_f.write_twt_file' from the 'jaxspec_function.py' module, allows us
-    to generate a .txt file containing the boundary values of this envelope using the 'data'.
+    In this graph, we have an envelope of variability from the variable sources in the modeling. The last function we use, 'j_f.write_pha_file' from the 'jaxspec_function.py' module,
+    writes the summed spectrum (with and without variability), the per-source spectra and the source information to one PHA FITS file.
 
     Example:
-        Use j_f.write_txt_file function ->
+        Use j_f.write_pha_file function ->
 
-        >>> j_f.write_txt_file(simulation_data=simulation_data, data=data)
+        >>> j_f.write_pha_file(total_spectra=total_spectra, obsconfig=obsconfig, simulation_data=simulation_data, key=key, pointing_ra=ra_opti, pointing_dec=dec_opti, radius_arcmin=args.radius, exposure=args.exp_time, rmf_path=nicer_data_rmf, arf_path=nicer_data_arf)
 
     """
     # --------------- Initialization --------------- #
@@ -737,10 +737,14 @@ def main():
     total_spectra = j_f.modeling_source_spectra(nearby_sources_table=nearby_sources_table, obsconfig=obsconfig, model=model, key=key)
     
     # plot of all spectra data
-    data = j_f.total_plot_spectra(total_spectra=total_spectra, obsconfig=obsconfig, simulation_data=simulation_data, catalog_name=args.catalog)
+    j_f.total_plot_spectra(total_spectra=total_spectra, obsconfig=obsconfig, simulation_data=simulation_data, catalog_name=args.catalog)
 
-    # output spectre plot
-    j_f.write_txt_file(simulation_data=simulation_data, data=data)
+    # summed and per-source spectra + source information in one PHA FITS file
+    j_f.write_pha_file(total_spectra=total_spectra, obsconfig=obsconfig, simulation_data=simulation_data, key=key,
+                       pointing_ra=vector_dictionary['SampleRA'][OptimalPointingIdx],
+                       pointing_dec=vector_dictionary['SampleDEC'][OptimalPointingIdx],
+                       radius_arcmin=args.radius, exposure=args.exp_time,
+                       rmf_path=nicer_data_rmf, arf_path=nicer_data_arf)
 
     # ------------------------------------------------------------- # 
 

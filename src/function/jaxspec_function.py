@@ -4,6 +4,8 @@
 from astropy.io import fits
 from astropy import units as u
 from astropy.table import Table
+from astropy.coordinates import SkyCoord
+from astropy.time import Time
 from termcolor import colored
 from typing import Dict
 from tqdm import tqdm
@@ -30,8 +32,8 @@ This module provides functions for astronomical data analysis and spectral model
 
 Functions:
 - modeling_source_spectra: Generates model spectra for sources in a nearby sources table using specified instrument and model parameters.
-- total_plot_spectra: Creates and saves a plot of spectral modeling data from a specified catalog and returns spectral data.
-- write_txt_file: Writes the spectral modeling data into a formatted text file.
+- total_plot_spectra: Creates and saves the plots of the simulated spectra.
+- write_pha_file: Writes the simulated spectra (summed and per source) and the source information to one PHA FITS file.
 
 The module integrates with astropy.io, astropy.table, termcolor, tqdm, and jaxspec, among others, for its functionality. It is designed to facilitate the cross-catalog matching of astronomical sources, the generation and analysis of spectral data, and the efficient presentation and storage of the results.
 
@@ -142,7 +144,52 @@ def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, key) 
     return total_spectra
 
 
-def total_plot_spectra(total_spectra: List, obsconfig, simulation_data: Dict, catalog_name: str) -> Dict:
+def variability_ratios(nearby_sources_table, n_sources):
+    """Per-source flux scaling factors for the variability envelope.
+
+    Spectra scale linearly with the normalization at fixed photon index and
+    N_H, so multiplying a source's simulated spectra by flux_min/flux and
+    flux_max/flux gives its low- and high-state spectra without re-simulating.
+    A source gets an envelope if its fluxes changed between observations
+    (var_ratio > 1) or XMM flagged it as variable within an observation
+    (short_term_var). Without variability columns (single-catalog modes) every
+    factor is 1.
+
+    Returns:
+        var_flags (bool array), ratio_lower (float array), ratio_upper (float array).
+    """
+    var_flags = np.zeros(n_sources, dtype=bool)
+    ratio_lower = np.ones(n_sources)
+    ratio_upper = np.ones(n_sources)
+    colnames = set(getattr(nearby_sources_table, "colnames", []))
+    if nearby_sources_table is None or not {"var_ratio", "flux_min", "flux_max", "flux"} <= colnames:
+        return var_flags, ratio_lower, ratio_upper
+
+    vr_col = np.array(nearby_sources_table["var_ratio"], dtype=float)
+    fmin_col = np.array(nearby_sources_table["flux_min"], dtype=float)
+    fmax_col = np.array(nearby_sources_table["flux_max"], dtype=float)
+    f_col = np.array(nearby_sources_table["flux"], dtype=float)
+    stv_col = (np.array(nearby_sources_table["short_term_var"], dtype=bool)
+               if "short_term_var" in colnames else np.zeros(n_sources, dtype=bool))
+    for i in range(n_sources):
+        if (vr_col[i] > 1.0 or stv_col[i]) and f_col[i] > 0.0:
+            var_flags[i] = True
+            ratio_lower[i] = fmin_col[i] / f_col[i]
+            ratio_upper[i] = fmax_col[i] / f_col[i]
+    return var_flags, ratio_lower, ratio_upper
+
+
+def summed_variability_spectra(total_spectra, ratio_lower, ratio_upper):
+    """Summed spectra with every source at its low (resp. high) flux state."""
+    summed_lower = 0.0
+    summed_upper = 0.0
+    for i in range(len(total_spectra)):
+        summed_lower = summed_lower + total_spectra[i] * ratio_lower[i]
+        summed_upper = summed_upper + total_spectra[i] * ratio_upper[i]
+    return summed_lower, summed_upper
+
+
+def total_plot_spectra(total_spectra: List, obsconfig, simulation_data: Dict, catalog_name: str) -> None:
     """
     Generates and saves a plot of spectral modeling data and returns a summary of the spectral data.
 
@@ -156,9 +203,6 @@ def total_plot_spectra(total_spectra: List, obsconfig, simulation_data: Dict, ca
         simulation_data (Dict): Dictionary containing simulation parameters and paths.
         catalog_name (str): Name of the catalog used for spectral modeling.
 
-    Returns:
-        Dict: A dictionary containing energy values, median counts, and their upper and lower limits.
-
     Important:
         The function generates three subplots:
             1. Spectra from Nearby Sources: Plots the median spectra for each source.
@@ -166,7 +210,7 @@ def total_plot_spectra(total_spectra: List, obsconfig, simulation_data: Dict, ca
             3. Spectrum Summed with Variability Sources Error: Includes error bars representing variability.
 
     The plot uses logarithmic scaling on both axes, with the x-axis representing energy in keV and the y-axis representing counts.
-    The final plot is saved as a PNG file and the function returns a dictionary with energy, counts, and their limits.
+    The plots are saved as PNG files. The numbers behind them are written by write_pha_file.
 
     Note:
         - The file is named based on the catalog name and the object of interest from the simulation data.
@@ -201,49 +245,11 @@ def total_plot_spectra(total_spectra: List, obsconfig, simulation_data: Dict, ca
     for item in range(len(total_spectra)):
         spectrum_summed += total_spectra[item]
 
-    # Variability bracketing (merged mode only). When the nearby table carries
-    # var_ratio/flux_min/flux_max columns (added by MultiCatalogPipeline from
-    # the MasterSource records), build per-source linear scaling ratios so the
-    # nominal spectrum can be rescaled to the source's observed flux extrema.
-    # Spectra scale linearly with norm at fixed alpha/Nh, so multiplying the
-    # nominal spectrum by (flux_min / flux) and (flux_max / flux) gives the
-    # min- and max-state forward-folded spectra without re-running fakeit.
-    # var_ratio > 1 ↔ MasterSource detected variability beyond per-observation
-    # errors. Sources with var_ratio == 1 (single observation or no significant
-    # variability) collapse to ratio_lower == ratio_upper == 1.
-    nearby_table_var = simulation_data.get("nearby_sources_table")
-    has_var_info = (
-        nearby_table_var is not None
-        and {"var_ratio", "flux_min", "flux_max", "flux"}
-            <= set(getattr(nearby_table_var, "colnames", []))
-    )
-    var_flags = [False] * len(total_spectra)
-    var_ratios = [1.0] * len(total_spectra)
-    ratio_lower = [1.0] * len(total_spectra)
-    ratio_upper = [1.0] * len(total_spectra)
-    if has_var_info:
-        vr_col = np.array(nearby_table_var["var_ratio"], dtype=float)
-        fmin_col = np.array(nearby_table_var["flux_min"], dtype=float)
-        fmax_col = np.array(nearby_table_var["flux_max"], dtype=float)
-        f_col = np.array(nearby_table_var["flux"], dtype=float)
-        # Intra-observation (XMM VAR_FLAG) variability also switches the
-        # envelope on, even when there is no change between observations.
-        stv_col = (np.array(nearby_table_var["short_term_var"], dtype=bool)
-                   if "short_term_var" in nearby_table_var.colnames
-                   else np.zeros(len(f_col), dtype=bool))
-        for i in range(len(total_spectra)):
-            var_ratios[i] = float(vr_col[i])
-            if (vr_col[i] > 1.0 or stv_col[i]) and f_col[i] > 0.0:
-                var_flags[i] = True
-                ratio_lower[i] = float(fmin_col[i] / f_col[i])
-                ratio_upper[i] = float(fmax_col[i] / f_col[i])
-    any_variable = any(var_flags)
-
-    spectrum_summed_lower = 0.0
-    spectrum_summed_upper = 0.0
-    for i in range(len(total_spectra)):
-        spectrum_summed_lower = spectrum_summed_lower + total_spectra[i] * ratio_lower[i]
-        spectrum_summed_upper = spectrum_summed_upper + total_spectra[i] * ratio_upper[i]
+    var_flags, ratio_lower, ratio_upper = variability_ratios(
+        simulation_data.get("nearby_sources_table"), len(total_spectra))
+    any_variable = bool(np.any(var_flags))
+    spectrum_summed_lower, spectrum_summed_upper = summed_variability_spectra(
+        total_spectra, ratio_lower, ratio_upper)
 
     # Source colors come from matplotlib's tab20 + tab20b + tab20c qualitative
     # palettes interleaved — 60 perceptually distinct colors with strong
@@ -696,60 +702,223 @@ def total_plot_spectra(total_spectra: List, obsconfig, simulation_data: Dict, ca
             plt.savefig(origin_img_path, bbox_inches='tight')
             plt.close(fig_origin)
 
-    # .txt envelope (used by write_txt_file): median + 16th / 84th percentile
-    # of the 100 total summed spectra at each energy bin.
-    data = {
-        "Energy": energies,
-        "Counts": np.median(spectrum_summed, axis=0),
-        "Upper limit": np.percentile(spectrum_summed, 84, axis=0),
-        "Lower limit": np.percentile(spectrum_summed, 16, axis=0),
-    }
 
-    return data
+def _source_columns(nearby_sources_table: Table, key: str):
+    """Name, RA and Dec column names of the nearby-sources table for this mode."""
+    if key == "merged":
+        return "iau_name", "RA", "DEC"
+    coord = dict_cat.dictionary_coord[key]
+    return coord["iauname"], coord["right_ascension"], coord["declination"]
 
 
-def write_txt_file(simulation_data: Dict, data: Dict) -> None:
+def write_pha_file(total_spectra: List, obsconfig, simulation_data: Dict, key: str,
+                   pointing_ra: float, pointing_dec: float, radius_arcmin: float,
+                   exposure: float, rmf_path: str, arf_path: str) -> str:
     """
-    Writes spectral modeling data into a formatted text file for analysis and documentation.
+    Writes the simulated nearby-source spectra to one OGIP PHA FITS file.
 
-    This function takes spectral data and simulation parameters, and writes this information to a text file in a 
-    specified directory. The output file is formatted to include a header and rows of data, presenting energy values, 
-    count rates, and their upper and lower limits in a readable format. This is useful for subsequent analysis or documentation.
+    The file holds the same numbers as the summed-spectrum figures, so a user
+    can reuse them in their own analysis (e.g. as a background spectrum in
+    XSPEC: ``backgrnd 1 <file>.pha``). It has three extensions:
+
+    1. ``SPECTRUM`` (OGIP type I): the summed spectrum of all nearby sources per
+       PI channel (0-1500, matching the NICER RMF).
+
+       - ``COUNTS``: median of the simulated summed spectra (the plotted median).
+       - ``STAT_ERR``: (P84 - P16) / 2.
+       - ``COUNTS_P16``, ``COUNTS_P84``: 16-84 % band without variability
+         (photon-index uncertainty only, blue band in the figures).
+       - ``COUNTS_VAR_LOW``, ``COUNTS_VAR_HIGH``: band with variability
+         (16th percentile with every variable source at its lowest flux, 84th
+         percentile at its highest flux, orange band in the figures).
+       - ``E_MIN``, ``E_MAX``: channel energy bounds in keV.
+
+    2. ``SOURCES``: one row per nearby source (position, off-axis angle,
+       vignetting, catalog, flux, photon index, N_H, count rate, variability).
+
+    3. ``SOURCE_SPECTRA``: the same five spectra as in ``SPECTRUM`` for each
+       source, in the same row order as ``SOURCES``.
+
+    Without variability information (single-catalog modes) the variability
+    columns equal the 16-84 % band and the header keyword VARINFO is False.
 
     Args:
-        simulation_data (Dict): A dictionary containing simulation parameters and paths, including output directory.
-        data (Dict): A dictionary with spectral data. Expected keys are 'Energy', 'Counts', 'Upper limit', and 'Lower limit'.
+        total_spectra (List): Simulated spectra per source, from modeling_source_spectra.
+        obsconfig: jaxspec ObsConfiguration used for the simulation.
+        simulation_data (Dict): Simulation parameters, paths and the nearby-sources table.
+        key (str): Catalog key ('merged', 'XMM', ...).
+        pointing_ra, pointing_dec (float): Pointing used for the vignetting, in degrees.
+        radius_arcmin (float): Search radius around the target, in arcmin.
+        exposure (float): Exposure time in seconds.
+        rmf_path, arf_path (str): NICER response files used for the simulation.
 
-    Important:
-        The text file created includes:
-            - A header with column names: 'Energy', 'Counts', 'Upper limit', 'Lower limit'.
-            - Data rows formatted for clarity, presenting values for each key in `data`.
-
-    The output file is named based on the 'catalog_key' from `simulation_data` and saved in the specified directory.
-
-    Note:
-        - It is expected that `data` dictionary contains lists of equal length for each key.
-        - The file path and name are derived from the 'catalog_directory' and 'catalog_key' in `simulation_data`.
+    Returns:
+        str: Path of the written file.
     """
-    
-    catalog_directory = simulation_data['os_dictionary']["catalog_directory"]
-    key = simulation_data["os_dictionary"]["catalog_key"]
-    txt_path = os.path.join(catalog_directory, f'{key}_output_modeling_plot.txt').replace("\\", "/")
-    
-    data_to_txt = [
-        list(data.keys())
-    ]
-    
-    energy, counts, y_upper, y_lower = list(data.values())
-    data_to_txt.extend([energy[index], counts[index], y_upper[index], y_lower[index]] for index in range(len(energy)))
-    
-    with open(txt_path, 'w') as file:
-        header = "{:<15} {:<15} {:<15} {:<15}".format(*data_to_txt[0])
-        file.write(header + "\n")
+    from catalog_class.MultiCatalogPipeline import K_FVAR
 
-        for row in data_to_txt[1:]:
-            new_row = "{:<10.5f}     {:<10.5f}       {:<10.5f}       {:<10.5f}".format(*row)
-            file.write(new_row + "\n")
-            
-    print(f"\n{colored(f'{key}_output_modeling_plot.txt', 'yellow')} has been created in {colored(txt_path, 'blue')}")
+    object_data = simulation_data["object_data"]
+    os_dictionary = simulation_data["os_dictionary"]
+    table = simulation_data["nearby_sources_table"]
+    n_sources = len(total_spectra)
 
+    # Simulated channels -> PI channels of the RMF. jaxspec drops PI 0
+    # (0-0.01 keV), so channels are matched on their lower energy bound.
+    with fits.open(rmf_path) as hdul:
+        ebounds = hdul["EBOUNDS"].data
+        pi_channel = np.array(ebounds["CHANNEL"], dtype=np.int32)
+        e_min = np.array(ebounds["E_MIN"], dtype=float)
+        e_max = np.array(ebounds["E_MAX"], dtype=float)
+    sim_e_min = np.asarray(obsconfig.out_energies[0], dtype=float)
+    sim_to_pi = np.array([np.argmin(np.abs(e_min - e)) for e in sim_e_min])
+
+    def to_pi(spectrum):
+        full = np.zeros(len(pi_channel))
+        full[sim_to_pi] = spectrum
+        return full
+
+    def five_spectra(spectra, ratio_low, ratio_high):
+        """median, P16, P84, variability low, variability high (PI channels)."""
+        return [to_pi(np.median(spectra, axis=0)),
+                to_pi(np.percentile(spectra, 16, axis=0)),
+                to_pi(np.percentile(spectra, 84, axis=0)),
+                to_pi(np.percentile(spectra * ratio_low, 16, axis=0)),
+                to_pi(np.percentile(spectra * ratio_high, 84, axis=0))]
+
+    var_flags, ratio_lower, ratio_upper = variability_ratios(table, n_sources)
+    var_info = {"var_ratio", "flux_min", "flux_max"} <= set(table.colnames)
+
+    spectrum_summed = 0.0
+    for spectra in total_spectra:
+        spectrum_summed = spectrum_summed + spectra
+    summed_lower, summed_upper = summed_variability_spectra(total_spectra, ratio_lower, ratio_upper)
+    median, p16, p84 = five_spectra(spectrum_summed, 1.0, 1.0)[:3]
+    var_low = to_pi(np.percentile(summed_lower, 16, axis=0))
+    var_high = to_pi(np.percentile(summed_upper, 84, axis=0))
+
+    # ---------- SPECTRUM ---------- #
+    spectrum_hdu = fits.BinTableHDU.from_columns([
+        fits.Column(name="CHANNEL", format="J", array=pi_channel),
+        fits.Column(name="COUNTS", format="D", unit="count", array=median),
+        fits.Column(name="STAT_ERR", format="D", unit="count", array=(p84 - p16) / 2),
+        fits.Column(name="COUNTS_P16", format="D", unit="count", array=p16),
+        fits.Column(name="COUNTS_P84", format="D", unit="count", array=p84),
+        fits.Column(name="COUNTS_VAR_LOW", format="D", unit="count", array=var_low),
+        fits.Column(name="COUNTS_VAR_HIGH", format="D", unit="count", array=var_high),
+        fits.Column(name="E_MIN", format="D", unit="keV", array=e_min),
+        fits.Column(name="E_MAX", format="D", unit="keV", array=e_max),
+    ], name="SPECTRUM")
+    h = spectrum_hdu.header
+    for card in [
+        ("TELESCOP", "NICER", "Mission"),
+        ("INSTRUME", "XTI", "Instrument"),
+        ("FILTER", "NONE", "Filter"),
+        ("OBJECT", object_data["object_name"], "Target of the pointing"),
+        ("EXPOSURE", float(exposure), "[s] Simulated exposure time"),
+        ("AREASCAL", 1.0, "Area scaling factor"),
+        ("BACKSCAL", 1.0, "Background scaling factor"),
+        ("CORRSCAL", 0.0, "Correction scaling factor"),
+        ("BACKFILE", "NONE", "Background file"),
+        ("CORRFILE", "NONE", "Correction file"),
+        ("RESPFILE", os.path.basename(rmf_path), "Response matrix used"),
+        ("ANCRFILE", os.path.basename(arf_path), "Ancillary response used"),
+        ("HDUCLASS", "OGIP", "Format conforms to OGIP standard"),
+        ("HDUCLAS1", "SPECTRUM", "PHA dataset"),
+        ("HDUCLAS2", "BKG", "Simulated contribution of nearby sources"),
+        ("HDUCLAS3", "COUNT", "PHA data stored as counts"),
+        ("HDUVERS", "1.2.1", "OGIP version"),
+        ("CHANTYPE", "PI", "Channel type"),
+        ("DETCHANS", len(pi_channel), "Number of channels"),
+        ("POISSERR", False, "Errors are given in STAT_ERR"),
+        ("SYS_ERR", 0, "No systematic error"),
+        ("QUALITY", 0, "All channels good"),
+        ("GROUPING", 0, "No grouping"),
+        ("RA_OBJ", float(object_data["object_position"].ra.deg), "[deg] Target RA"),
+        ("DEC_OBJ", float(object_data["object_position"].dec.deg), "[deg] Target Dec"),
+        ("RA_PNT", float(pointing_ra), "[deg] Pointing used for the vignetting"),
+        ("DEC_PNT", float(pointing_dec), "[deg] Pointing used for the vignetting"),
+        ("CATMODE", key, "Catalog mode (merged or single catalog)"),
+        ("RADIUS", float(radius_arcmin), "[arcmin] Search radius around the target"),
+        ("NSOURCES", n_sources, "Number of nearby sources summed"),
+        ("NVAR", int(np.sum(var_flags)), "Number of sources with a variability band"),
+        ("VARINFO", bool(var_info), "Variability information available"),
+        ("K_FVAR", float(K_FVAR), "XMM FVAR scaling of the variability band"),
+        ("NSAMPLES", int(np.shape(total_spectra[0])[0]) if n_sources else 0,
+         "Simulations per source (photon-index samples)"),
+        ("CREATOR", "NICER-Pointing", "Software that created this file"),
+        ("DATE", Time.now().isot, "File creation date (UTC)"),
+    ]:
+        h[card[0]] = (card[1], card[2])
+    h.add_comment("COUNTS = median of the summed simulated spectra (as in the figures).")
+    h.add_comment("Without variability: COUNTS_P16 - COUNTS_P84 (photon-index uncertainty).")
+    h.add_comment("With variability: COUNTS_VAR_LOW - COUNTS_VAR_HIGH (all variable")
+    h.add_comment("sources at their lowest / highest observed flux).")
+
+    # ---------- SOURCES ---------- #
+    name_col, ra_col, dec_col = _source_columns(table, key)
+    flux_col = "flux" if key == "merged" else dict_cat.dictionary_catalog[key]["flux_obs"]
+    names = np.array([str(n).strip() for n in table[name_col]])
+    ra = np.array(table[ra_col], dtype=float)
+    dec = np.array(table[dec_col], dtype=float)
+    pointing = SkyCoord(ra=pointing_ra * u.deg, dec=pointing_dec * u.deg)
+    off_axis = SkyCoord(ra=ra * u.deg, dec=dec * u.deg).separation(pointing).arcmin
+    flux = np.array(table[flux_col], dtype=float)
+    pho_index = np.array(table["Photon Index"], dtype=float)
+    pho_index_err = np.array(table["Photon Index Error"], dtype=float)
+    catalog = (np.array([str(c) for c in table["origin_catalog"]])
+               if "origin_catalog" in table.colnames else np.full(n_sources, key))
+    nan = np.full(n_sources, np.nan)
+    var_ratio = np.array(table["var_ratio"], dtype=float) if var_info else nan
+    flux_min = np.array(table["flux_min"], dtype=float) if var_info else nan
+    flux_max = np.array(table["flux_max"], dtype=float) if var_info else nan
+    short_term_var = (np.array(table["short_term_var"], dtype=bool)
+                      if "short_term_var" in table.colnames else np.zeros(n_sources, dtype=bool))
+    name_len = max([len(n) for n in names] + [1])
+    cat_len = max([len(c) for c in catalog] + [1])
+
+    sources_hdu = fits.BinTableHDU.from_columns([
+        fits.Column(name="NAME", format=f"{name_len}A", array=names),
+        fits.Column(name="CATALOG", format=f"{cat_len}A", array=catalog),
+        fits.Column(name="RA", format="D", unit="deg", array=ra),
+        fits.Column(name="DEC", format="D", unit="deg", array=dec),
+        fits.Column(name="OFFAXIS", format="D", unit="arcmin", array=off_axis),
+        fits.Column(name="VIGNETTING", format="D", array=np.array(table["vignetting_factor"], dtype=float)),
+        fits.Column(name="FLUX", format="D", unit="erg/cm2/s", array=flux),
+        fits.Column(name="PHO_INDEX", format="D", array=pho_index),
+        fits.Column(name="PHO_INDEX_ERR", format="D", array=pho_index_err),
+        fits.Column(name="DEFAULT_GAMMA", format="L",
+                    array=(pho_index == 1.7) & (pho_index_err == 0.0)),
+        fits.Column(name="NH", format="D", unit="cm-2", array=np.array(table["Nh"], dtype=float)),
+        fits.Column(name="COUNT_RATE", format="D", unit="count/s",
+                    array=np.array(table["count_rate"], dtype=float)),
+        fits.Column(name="VAR_FLAG", format="L", array=var_flags),
+        fits.Column(name="VAR_RATIO", format="D", array=var_ratio),
+        fits.Column(name="FLUX_MIN", format="D", unit="erg/cm2/s", array=flux_min),
+        fits.Column(name="FLUX_MAX", format="D", unit="erg/cm2/s", array=flux_max),
+        fits.Column(name="SHORT_TERM_VAR", format="L", array=short_term_var),
+    ], name="SOURCES")
+    sources_hdu.header.add_comment("DEFAULT_GAMMA: photon index set to 1.7 (error 0) after a bad or failed fit.")
+    sources_hdu.header.add_comment("VAR_FLAG: source has a variability band (VAR_RATIO > 1 or SHORT_TERM_VAR).")
+    sources_hdu.header.add_comment("SHORT_TERM_VAR: XMM VAR_FLAG (variability within one observation).")
+
+    # ---------- SOURCE_SPECTRA ---------- #
+    per_source = np.array([five_spectra(total_spectra[i], ratio_lower[i], ratio_upper[i])
+                           for i in range(n_sources)]).reshape(n_sources, 5, len(pi_channel))
+    vec = f"{len(pi_channel)}D"
+    source_spectra_hdu = fits.BinTableHDU.from_columns([
+        fits.Column(name="NAME", format=f"{name_len}A", array=names),
+        fits.Column(name="COUNTS", format=vec, unit="count", array=per_source[:, 0]),
+        fits.Column(name="COUNTS_P16", format=vec, unit="count", array=per_source[:, 1]),
+        fits.Column(name="COUNTS_P84", format=vec, unit="count", array=per_source[:, 2]),
+        fits.Column(name="COUNTS_VAR_LOW", format=vec, unit="count", array=per_source[:, 3]),
+        fits.Column(name="COUNTS_VAR_HIGH", format=vec, unit="count", array=per_source[:, 4]),
+    ], name="SOURCE_SPECTRA")
+    source_spectra_hdu.header.add_comment("One row per source (same order as SOURCES), one value per PI channel.")
+
+    pha_path = os.path.join(
+        os_dictionary["catalog_directory"],
+        f"{key}_nearby_sources_{object_data['object_name']}.pha".replace(" ", "_"),
+    ).replace("\\", "/")
+    fits.HDUList([fits.PrimaryHDU(), spectrum_hdu, sources_hdu, source_spectra_hdu]).writeto(pha_path, overwrite=True)
+    print(f"\nSpectrum file of the nearby sources has been created in {colored(pha_path, 'blue')}")
+    return pha_path
