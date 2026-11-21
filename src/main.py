@@ -459,7 +459,7 @@ def main():
         while True:
             log.info(f"\nCollecting data for coord : {colored([ra, dec], 'magenta')}")
             try:
-                object_name = Simbad.query_region(f"{ra}d {dec}d", radius="1s")['MAIN_ID'][0]
+                object_name = Simbad.query_region(f"{ra}d {dec}d", radius="1s")['main_id'][0]
                 log.debug(f"Simbad object at these coordinates: {object_name}")
                 break
             except Exception as error:
@@ -478,8 +478,8 @@ def main():
                 count_rate = float(input("Enter the count rate of your object : \n"))
                 break
             except ValueError as error:
-                print(f"Error: {error}")
-                print("Please enter a valid float value for Count Rate.")
+                log.warning(f"Invalid count rate: {error}")
+                log.warning("Please enter a valid float value for Count Rate.")
                 continue
 
     # ------------------------------------------------- #

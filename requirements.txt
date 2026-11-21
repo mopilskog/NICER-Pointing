@@ -1,5 +1,5 @@
 astropy==6.1.7
-astroquery==0.4.7
+astroquery==0.4.11
 jax==0.6.2
 jaxspec==0.3.4
 matplotlib==3.9.2

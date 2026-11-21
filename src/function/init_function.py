@@ -25,7 +25,6 @@ Functions:
 - is_valid_file_path(file_path): Checks if a file exists at a given file path.
 - get_valid_file_path(path): Continuously prompts the user for a valid file path until one is provided.
 - choose_catalog(args_catalog): Chooses a catalog based on a provided keyword and returns a valid file path for it.
-- define_sources_list(): Prompts the user to define a list of sources for calculations, either manually or by importing from a file.
 - add_source_list(active_workflow): Prompts the user to add sources to a calculation and loads a FITS file as a source list.
 - get_coord_psr(name): Retrieves the coordinates of a pulsar object from the SIMBAD database.
 - py_to_xlsx(excel_data_path, count_rates, object_data, args, radius): Converts and saves Python data into an Excel file.
@@ -139,85 +138,8 @@ def choose_catalog(args_catalog, interactive: bool = False) -> Tuple[str, str]:
             else:
                 raise argparse.ArgumentError(None, "invalid catalog keyword keyword. retry with Xmm_DR13, CSC_2.0, Swift, eRASS1 or merged.")
         except argparse.ArgumentError as error:
-            print(f'An error occured : {error}')
+            log.warning(f"Invalid catalog keyword: {error}")
             args_catalog = str(input("Enter a new key word : \n"))
-
-
-def define_sources_list() -> Table:
-    """
-    Prompts the user to define a list of astronomical sources for calculations. This function allows users to add sources either manually or by importing data from a file.
-
-    The function initially asks the user if they wish to add sources to the calculation. Users can add sources manually by entering the source details (name, right ascension (ra), declination (dec), and variability rate) or choose to import this data from a specified file. The data, whether manually input or imported, is stored as a list of tuples, each tuple representing a source.
-
-    The process continues until the user decides not to add more sources or completes importing sources from a file. Invalid inputs at any stage are handled with error messages and re-prompting for valid input.
-
-    Returns:
-        list: A list of tuples, where each tuple contains:
-            - Source name (str)
-            - Right ascension (float)
-            - Declination (float)
-            - Variability rate (float or np.nan): 'np.nan' if the source is invariant or a float value representing the variability rate.
-
-    Each tuple in the returned list represents an astronomical source with its respective coordinates and variability rate.
-    """
-    UserList = []
-
-    while True:
-        try:
-            choice = str(input("Add sources to calculation? (yes/y or no/n): ")).lower()
-
-            if choice in ['no', 'n']:
-                return UserList
-            elif choice in ['yes', 'y']:
-                break
-            else:
-                raise ValueError("Invalid input. Please enter 'yes' or 'y' for yes, 'no' or 'n' for no.")
-        except ValueError as error:
-            print(f"An error occured {error}")
-
-    while True :
-        open_file = str(input("Import data_src from a file? (yes/y or no/n): ")).lower()
-
-        try:
-            if open_file in ['yes', 'y']:
-                print("Try : Catalog/exemple_src.txt")
-                FILE_PATH = str(input("Enter a file_path : \n"))
-                print("\n")
-                print('-'*50)
-                file_path = get_valid_file_path(FILE_PATH)
-                print('-'*50)
-
-                col1, ra, dec, value_var = np.loadtxt(file_path, unpack=True, usecols=(0, 1, 2, 3), dtype={'names': ('col1', 'ra', 'dec', 'valueVar'), 'formats': ('S25', 'f8', 'f8', 'f4')})
-                name = [col1[data].decode().replace("_", " ") for data in range(len(col1))]
-
-                for value in range(len(col1)):
-                    UserList.append((name[value], ra[value], dec[value],value_var[value]))
-                break
-
-            elif open_file in ['no', 'n']:
-
-                nbr_src = int(input("How many sources do you need to add ? "))
-                item = 0
-                print("\n")
-
-                while item < nbr_src:
-                    name = input('Enter source name : ')
-                    ra = float(input('Enter right ascension : '))
-                    dec = float(input('Enter declination : '))
-                    value_var = input("Enter the value of variability rate of your object, enter nan if the object is invariant : ")
-                    if value_var == 'nan':
-                        value_var = np.nan
-                    UserList.append((name, ra, dec, value_var))
-                    item += 1
-                    print(f"{colored(item, 'blue')} item added to the list \n")
-
-                break
-            else:
-                raise ValueError("Invalid input. Please enter 'yes' or 'y' for yes, 'no' or 'n' for no.")
-        except ValueError as error:
-            print(f"An error occured {error}")
-   
-    return UserList
 
 
 def add_source_list(active_workflow,  interactive = False) -> Table:
@@ -255,7 +177,7 @@ def add_source_list(active_workflow,  interactive = False) -> Table:
             else:
                 raise ValueError("Invalid input. Please enter 'yes' or 'y' for yes, 'no' or 'n' for no.")
         except ValueError as error:
-            print(f"An error occured {error}")
+            log.warning(f"Invalid input: {error}")
         
     path = str(input("Enter the file path : \n"))
     valid_path = get_valid_file_path(path)
@@ -276,7 +198,8 @@ def get_coord_psr(name) -> SkyCoord:
     Returns:
         SkyCoord: A SkyCoord object representing the coordinates (RA and DEC) of the pulsar.
     """
-    return SkyCoord(ra=Simbad.query_object(name)['RA'][0], dec=Simbad.query_object(name)['DEC'][0], unit=(u.hourangle, u.deg))
+    result = Simbad.query_object(name)
+    return SkyCoord(ra=result['ra'][0], dec=result['dec'][0], unit=u.deg)
 
 
 # --------------- None important function --------------- #
