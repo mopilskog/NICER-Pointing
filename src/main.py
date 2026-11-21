@@ -29,6 +29,8 @@ import function.init_function as i_f
 import function.calculation_function as c_f
 import function.software_function as s_f
 import function.jaxspec_function as j_f
+from function.log_function import log, setup_logging, start_log_file
+import function.summary_function as sum_f
 
 # ------------------------------------- #
 
@@ -228,15 +230,12 @@ def main():
     Chandra Catalog Processing:
         - Configuration settings specific to the Chandra catalog are stored in `os_dictionary`, including paths for modeling files, images, and relevant software tools.
         - The `ChandraCatalog` class manages the intricacies of Chandra data, focusing on high-resolution X-ray observations.
-        - Users are given the option to choose between the standard Chandra catalog and the CS_Chandra (cone search) catalog for their analysis.
 
     Note:
         - The Chandra catalog is particularly useful for studying detailed structures in X-ray emitting regions, benefiting NICER's pointing accuracy.
-        - The choice between Chandra and CS_Chandra catalog versions allows for flexibility in analysis, depending on the specific requirements of the study.
 
     Important:
         - Users must verify the availability and correctness of Chandra catalog data in the specified directories for successful processing.
-        - The choice between the two Chandra catalog versions should be made based on the nature of the data and the specific goals of the analysis.
 
     After setting up the necessary configuration and making the choice of catalog, the script proceeds with the processing of the Chandra data, updating `simulation_data` accordingly for the next stages of analysis.
 
@@ -413,11 +412,20 @@ def main():
                         help="Enter the exposure time to modeling data")
 
     parser.add_argument('--catalog', '-ca', type=str,
-                        help="Enter catalog keyword : Xmm_DR13/CSC_2.0/Swift/eRASS1/merged")
+                        help="Catalog keyword: Xmm_DR13/CSC_2.0/Swift/eRASS1/merged (default: merged)")
 
     parser.add_argument('--interactive','-in', action='store_true', help="Interactive mode toggles plotting and asks for user input regarding file specifications. By default, the system will not show plots, to allow the user to run the program without having to interact with it at runtime.")
 
+    verbosity_group = parser.add_mutually_exclusive_group()
+    verbosity_group.add_argument('--verbose', '-v', action='store_true',
+                                 help="Show all details in the console")
+    verbosity_group.add_argument('--quiet', '-q', action='store_true',
+                                 help="Show only warnings, errors and the final results in the console")
+
     args = parser.parse_args()
+
+    # Console detail chosen by the user; everything is always written to run.log.
+    setup_logging("verbose" if args.verbose else "quiet" if args.quiet else "normal")
 
     psr_name = np.array(["PSR J0437-4715", "PSR J2124-3358", "PSR J0751+1807", "PSR J1231-1411"], dtype=str)
     psr_coord = np.array([f"{i_f.get_coord_psr(name).ra} {i_f.get_coord_psr(name).dec}" for name in psr_name])
@@ -433,33 +441,33 @@ def main():
         while True:
             if '_' in args.name:
                 object_name = args.name.replace('_', " ")
-                print(f"\nCollecting data for {colored(object_name, 'magenta')}")
+                log.info(f"\nCollecting data for {colored(object_name, 'magenta')}")
             else:
                 object_name = args.name
             try:
                 object_position = i_f.get_coord_psr(object_name)
-                print(f"\n{colored(object_name, 'green')} is in Simbad Database, here is his coordinate :\n{object_position}")
+                log.debug(f"{object_name} found in Simbad: RA {object_position.ra.deg:.5f}, Dec {object_position.dec.deg:.5f} deg")
                 break
             except Exception as error:
-                print(f"Error : {colored(object_name, 'red')}, isn't in Simbad Database")
+                log.warning(f"{colored(object_name, 'red')} was not found in Simbad")
                 object_name = str(input("Enter another name : \n"))
                 args.name = object_name
-                print(f"\nCollecting data for {colored(object_name, 'magenta')}")
-        catalog_path, catalog_name = i_f.choose_catalog(args.catalog)
+                log.info(f"\nCollecting data for {colored(object_name, 'magenta')}")
+        catalog_path, catalog_name = i_f.choose_catalog(args.catalog, interactive=args.interactive)
     elif args.coord:
         ra, dec = args.coord
         while True:
-            print(f"\nCollecting data for coord : {colored([ra, dec], 'magenta')}")
+            log.info(f"\nCollecting data for coord : {colored([ra, dec], 'magenta')}")
             try:
                 object_name = Simbad.query_region(f"{ra}d {dec}d", radius="1s")['MAIN_ID'][0]
-                print(f"{colored([ra, dec], 'green')} is in Simbad Database, here is his name :\n{object_name}")
+                log.debug(f"Simbad object at these coordinates: {object_name}")
                 break
             except Exception as error:
-                print(f"{colored([ra, dec], 'red')} isn't Simbad Database")
+                log.warning(f"No Simbad object found at {colored([ra, dec], 'red')}")
                 new_coord = str(input("Enter new coordinates : ra dec\n"))
                 ra, dec = new_coord.split()
         object_position = i_f.get_coord_psr(object_name)
-        catalog_path, catalog_name = i_f.choose_catalog(args.catalog)
+        catalog_path, catalog_name = i_f.choose_catalog(args.catalog, interactive=args.interactive)
         
     while True:
         if object_name in psr_name:
@@ -526,16 +534,15 @@ def main():
 
     if len(add_source_table) != 0:
         colnames = ['Name', 'Right Ascension', 'Declination', 'Var Value']
-        print("\nHere is the list given by the User : \n", add_source_table, "\n")
+        log.info(f"User-added sources:\n{add_source_table}")
     else:
-        print("\nUser don't defined any additionnal sources. \n")
+        log.debug("No user-added sources.")
 
     # ------------------------------------------ #
 
     # --------------- Load Nicer parameters --------------- #
 
-    print('-'*50)
-    print(f"{colored('Load NICER parameters : ', 'magenta')}")
+    log.debug("Loading NICER parameters")
     nicer_data_path = os.path.join(data_path, "NICER_data")
     PSF_data = os.path.join(nicer_data_path, "NICER_PSF.dat")
     ARF_data = os.path.join(nicer_data_path, "nixtiaveonaxis20170601v005.arf")
@@ -544,7 +551,6 @@ def main():
     nicer_data_arf = i_f.get_valid_file_path(ARF_data)
     nicer_data_rmf = i_f.get_valid_file_path(RMF_data)
     EffArea, OffAxisAngle = np.loadtxt(nicer_parameters_path, unpack=True, usecols=(0, 1))
-    print('-'*50, '\n')
 
     telescop_data = {"telescop_name": "nicer",
                     "EffArea": EffArea,
@@ -601,9 +607,11 @@ def main():
         model_dictionary = result.model_dictionary
         column_dictionary = result.column_dictionary
         key = result.key
+        log_path = start_log_file(simulation_data["os_dictionary"]["catalog_directory"])
+        log.debug(f"Full log of this run: {log_path}")
 
     else:
-        print(f"{colored('Invalid key workd !', 'red')}")
+        log.error(f"{colored('Invalid catalog keyword!', 'red')}")
         sys.exit()
         
     # --------------- count_rates --------------- #
@@ -626,7 +634,7 @@ def main():
 
     # --------------- Nominal pointing infos --------------- #
                 
-    c_f.nominal_pointing_info(simulation_data, nearby_sources_position)
+    nominal_pointing = c_f.nominal_pointing_info(simulation_data, nearby_sources_position)
 
     # ------------------------------------------------------ #
 
@@ -675,7 +683,7 @@ def main():
 
     def select_master_sources_around_region(ra, dec, radius, output_name):
         """Radius is in arcminutes"""
-        print(f"Extracting sources around region: RA {ra} and Dec {dec}")
+        log.debug(f"Extracting sources around region: RA {ra} and Dec {dec}")
         master_cone_path = os.path.join(output_name, 'Master_source_cone.fits').replace("\\", "/")
         command = (f"java -jar {stilts_software_path} tpipe {master_source_path} cmd='"+
                 f'select skyDistanceDegrees({ra},{dec},MS_RA,MS_DEC)*60<{radius} '+
@@ -685,7 +693,7 @@ def main():
 
 
     def select_catalogsources_around_region(output_name):
-        print('Selecting catalog sources')
+        log.debug('Selecting catalog sources')
         master_cone_path = os.path.join(output_name, 'Master_source_cone.fits').replace("\\", "/")
         for cat in catalogs:
             path_to_cat_init = os.path.join(catalog_datapath, cat).replace("\\", "/")
@@ -704,14 +712,19 @@ def main():
     right_ascension = object_data["object_position"].ra.value
     declination = object_data["object_position"].dec.value
     try:
-        print(f"\n{colored('Load Erwan s code for :', 'yellow')} {object_data['object_name']}")
-        select_master_sources_around_region(ra=right_ascension, dec=declination, radius=radius.value, output_name=output_name)
-        select_catalogsources_around_region(output_name=output_name)
-        master_sources = s_f.load_master_sources(output_name)
-        print("output name: ", output_name)
+        log.debug(f"Master-source variability plots for {object_data['object_name']}")
+        if result.master_sources is not None:
+            # Merged mode: the pipeline already built Master_source_cone.fits
+            # and loaded the master sources for the variability information.
+            master_sources = result.master_sources
+        else:
+            select_master_sources_around_region(ra=right_ascension, dec=declination, radius=radius.value, output_name=output_name)
+            select_catalogsources_around_region(output_name=output_name)
+            master_sources = s_f.load_master_sources(output_name)
+        log.debug(f"Master-source files in: {output_name}")
         s_f.master_source_plot(master_sources=master_sources, simulation_data=simulation_data, number_graph=len(master_sources))
     except Exception as error :
-        print(f"{colored('An error occured : ', 'red')} {error}")
+        log.warning(f"Master-source variability plots failed: {error}")
 
     # ---------------------------------------- #
 
@@ -746,7 +759,16 @@ def main():
                        radius_arcmin=args.radius, exposure=args.exp_time,
                        rmf_path=nicer_data_rmf, arf_path=nicer_data_arf)
 
-    # ------------------------------------------------------------- # 
+    # ------------------------------------------------------------- #
+
+    # --------------- run summary --------------- #
+
+    sum_f.write_summary(simulation_data=simulation_data, key=key,
+                        settings={"radius": args.radius, "exp_time": args.exp_time},
+                        merge_summary=result.merge_summary, nominal=nominal_pointing,
+                        vector_dictionary=vector_dictionary, optimal_index=OptimalPointingIdx)
+
+    # ------------------------------------------- # 
 
 if __name__ == "__main__":
     main()

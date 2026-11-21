@@ -16,6 +16,7 @@ from tqdm import tqdm
 import function.calculation_function as c_f
 import function.unique_function as u_f
 import function.init_function as i_f
+from function.log_function import log, RESULT
 # ------------------------------------- #
 
 import os
@@ -23,7 +24,6 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import catalog_information as dict_cat
-import pyvo as vo
 
 # ------------------------------ #
 
@@ -38,16 +38,14 @@ import pyvo as vo
 
 class ChandraCatalog:
     """
-    A class for handling and analyzing data from the Chandra X-ray Observatory and associated cone search catalogs.
+    A class for handling and analyzing data from the Chandra Source Catalog (CSC 2.0, read from Chandra.fits).
 
     This class is expertly crafted to manage and interpret data from the Chandra X-ray Observatory, one of the foremost 
-    tools in modern astrophysics for observing X-ray sources. It extends its capabilities to cone search catalogs, offering 
-    a wide array of analytical functions. These include identifying nearby astronomical sources, assessing their variability, 
+    tools in modern astrophysics for observing X-ray sources. Its functions include identifying nearby astronomical sources,
     computing photon indices, and modeling astronomical data for in-depth analysis.
 
-    The class streamlines the process of working with complex astronomical data, simplifying the task of extracting meaningful 
-    information from X-ray observations. Its integration with cone search catalogs enhances its utility in broader astronomical 
-    research and studies.
+    The online cone search of the Chandra Source Catalog (CS_Chandra) was removed; it is kept in the git tag
+    chandra-cone-search-v1 and on the branch legacy-modes.
 
     Important:
         - This class is tailored to work with the specific data formats and analytical needs of Chandra X-ray data.
@@ -60,8 +58,6 @@ class ChandraCatalog:
     Note:
         - ChandraCatalog is not just a data processing tool; it's a bridge between raw observational data and actionable 
           astronomical insights.
-        - The integration with cone search catalogs opens up new possibilities for comparative studies and cross-referencing 
-          with other astronomical data sources.
         - While designed for Chandra X-ray data, the methodologies and techniques employed are adaptable to other X-ray 
           observatories' data.
         - The class is part of a larger ecosystem of tools aimed at enhancing our understanding of the cosmos through X-ray 
@@ -80,12 +76,12 @@ class ChandraCatalog:
         """
         Initializes the Chandra class, setting up the necessary attributes for data analysis.
 
-        This constructor loads the Chandra catalog from the given path and performs various initializations, including loading a cone search catalog,
-        finding nearby sources, and preparing data for further analysis such as variability assessment, photon index calculation, and model generation.
+        This constructor loads the Chandra catalog from the given path, finds the nearby sources, and prepares the data for
+        further analysis such as photon index calculation and model generation.
 
         Args:
             catalog_path (str): Path to the primary Chandra catalog file. This file is used to initialize the Chandra catalog.
-            radius (Quantity): The search radius for finding nearby sources. This radius is utilized for cone searches and finding nearby sources.
+            radius (Quantity): The search radius for finding nearby sources. This radius is utilized for finding nearby sources.
             simulation_data (Dict): A dictionary containing simulation data. This includes 'object_data' for object-specific information and 'os_dictionary' for operating system-specific information.
             user_table (Table): An optional Astropy Table provided by the user to include in the analysis.
 
@@ -103,32 +99,10 @@ class ChandraCatalog:
             
             Declination key for the Chandra catalog.
             
-        .. attribute:: cs_ra
-            :type: str
-            :value: ra
-            
-            Right ascension key for the cone search Chandra catalog.
-            
-        .. attribute:: cs_dec
-            :type: str
-            :value: dec
-            
-            Declination key for the cone search Chandra catalog.
-            
         .. attribute:: chandra_catalog
             :type: Table
             
             Catalog data loaded from the Chandra catalog file.
-            
-        .. attribute:: cone_search_catalog
-            :type:Table
-            
-            Catalog data loaded from the cone search.
-            
-        .. attribute:: cs_nearby_sources_position
-            :type:SkyCoord
-            
-            Positions of sources found in the cone search catalog.
             
         .. attribute:: nearby_sources_table
             :type: Table
@@ -140,20 +114,10 @@ class ChandraCatalog:
             
             Positions of nearby sources found in the Chandra catalog.
 
-        .. attribute:: cs_photon_index
-            :type: list
-            
-            List of photon index values for sources in the cone search catalog.
-            
         .. attribute:: photon_index
             :type: list
             
             List of photon index values for sources in the Chandra catalog.
-            
-        .. attribute:: cs_model_dictionary
-            :type: dict
-            
-            Dictionary of models for sources in the cone search catalog.
             
         .. attribute:: model_dictionary
             :type: dict
@@ -163,9 +127,8 @@ class ChandraCatalog:
         Important:
             The constructor performs several key operations:
             
-            - Initializes coordinate keys for Chandra and cone search catalogs from a global dictionary.
+            - Initializes coordinate keys for the Chandra catalog from a global dictionary.
             - Loads the Chandra catalog from the specified path.
-            - Loads a cone search catalog based on the provided radius and object data.
             - Finds nearby sources based on the Chandra catalog and additional user-provided data.
             - Prepares the data for further analysis, including calculating photon indices and generating source models.
         """    
@@ -173,33 +136,17 @@ class ChandraCatalog:
         # ---------- coord ---------- #
         self.ra = dict_cat.dictionary_coord["Chandra"]["right_ascension"]
         self.dec = dict_cat.dictionary_coord["Chandra"]["declination"]
-        
-        self.ra_cs = dict_cat.dictionary_coord["CS_Chandra"]["right_ascension"]
-        self.dec_cs = dict_cat.dictionary_coord["CS_Chandra"]["declination"]
         # --------------------------- #
         
 
         self.chandra_catalog = self.open_catalog(catalog_path=catalog_path)
-        self.cone_search_catalog = self.load_cs_catalog(radius=radius, object_data=simulation_data["object_data"])
-        self.cs_nearby_sources_position = SkyCoord(ra=list(self.cone_search_catalog[self.ra_cs]), dec=list(self.cone_search_catalog[self.dec_cs]), unit=u.deg)
-        self.cone_search_catalog = self.variability_column()
-        self.cone_search_catalog, self.cs_nearby_sources_position = c_f.exclude_target_from_nearby_sources(
-            nearby_sources_table=self.cone_search_catalog,
-            object_position=simulation_data["object_data"]["object_position"],
-            object_name=simulation_data["object_data"]["object_name"],
-            ra_col=self.ra_cs,
-            dec_col=self.dec_cs,
-            iauname_col=dict_cat.dictionary_coord["CS_Chandra"]["iauname"],
-        )
-        self.cone_search_catalog = self.threshold(self.cone_search_catalog)
-        
         self.nearby_sources_table, self.nearby_sources_position = self.find_nearby_sources(radius=radius, object_data=simulation_data["object_data"], user_table=user_table)
         test_nh_path = os.path.join(simulation_data["os_dictionary"]["catalog_datapath"], "NHI_HPX.fits").replace("\\", "/")
         nh_path = i_f.get_valid_file_path(test_nh_path)
         self.nh_dictionnary = self.open_catalog(catalog_path=nh_path)
         self.neighbourhood_of_object(radius=radius, simulation_data=simulation_data)
-        self.cs_photon_index, self.photon_index = self.get_phoindex_nh()
-        self.cs_model_dictionary, self.model_dictionary = self.dictionary_model()
+        self.photon_index = self.get_phoindex_nh()
+        self.model_dictionary = self.dictionary_model()
 
         
 
@@ -222,31 +169,6 @@ class ChandraCatalog:
             return Table(data[1].data)
         
         
-    def load_cs_catalog(self, radius: Quantity, object_data: dict) -> Table:
-        """
-        Conducts a cone search in the Chandra Source Catalog using VO SCS protocol.
-
-        This method performs a cone search in the Chandra Source Catalog by initiating a VO SCS (Simple Cone Search) 
-        service request. The search is centered on the coordinates of a celestial object, which are determined using the 
-        object's name provided in `object_data`. The search radius is specified by the `radius` parameter.
-
-        Args:
-            radius (Quantity): The radius of the cone search. Should be an astropy Quantity object, specifying both the value and the unit (e.g., in degrees or arcminutes).
-            object_data (dict): A dictionary containing information about the celestial object. This must include a key 'object_name' with the object's name as its value, which is used to determine the object's sky coordinates for the search.
-
-        Returns:
-            Table: 
-                An astropy Table containing the results of the cone search. This table includes various details about the 
-                astronomical sources found within the specified search radius.
-
-        """
-        
-        cone = vo.dal.SCSService('http://cda.cfa.harvard.edu/csc2scs/coneSearch') 
-        name = SkyCoord.from_name(object_data['object_name'])
-        cone_search_catalog = cone.search(pos=name, radius=radius, verbosity=3)
-        return cone_search_catalog
-
-
     def find_nearby_sources(self, radius: Quantity, object_data: dict, user_table: Table) -> Tuple[Table, SkyCoord]:
         """
         Searches for astronomical sources near a specified object within the Chandra Source Catalog.
@@ -288,14 +210,14 @@ class ChandraCatalog:
         nearby_sources_table = Table(names= self.chandra_catalog.colnames,
                                      dtype= self.chandra_catalog.dtype)
         
-        print(fr"{colored('Reducing Chandra catalog...', 'yellow')} to fov of {radius.value + 5 } arcmin")
+        log.debug(fr"{colored('Reducing Chandra catalog...', 'yellow')} to fov of {radius.value + 5 } arcmin")
         for number in tqdm(range(len(self.chandra_catalog))):
             if min_ra/u.deg < self.chandra_catalog[self.ra][number] < max_ra/u.deg and min_dec/u.deg < self.chandra_catalog[self.dec][number] < max_dec/u.deg:
                 small_table.add_row(self.chandra_catalog[number])
                 
         sources_position = SkyCoord(ra=small_table[self.ra], dec=small_table[self.dec], unit=u.deg)
 
-        print(f"{colored(f'Find sources close to {object_name} with Chandra catalog', 'blue')}")
+        log.debug(f"{colored(f'Find sources close to {object_name} with Chandra catalog', 'blue')}")
         for number in tqdm(range(len(small_table))):
             if c_f.ang_separation(object_position, sources_position[number]) < radius:
                 nearby_sources_table.add_row(small_table[number])
@@ -308,7 +230,7 @@ class ChandraCatalog:
         if len(nearby_sources_table) != 0:
             unique_table = u_f.create_unique_sources_catalog(nearby_sources_table=nearby_sources_table, column_name=column_name)
         else:
-            print("Nearby sources table from Chandra catalog is empty.")
+            log.debug("Nearby sources table from Chandra catalog is empty.")
             sys.exit()
             
         nearby_sources_position = SkyCoord(ra=unique_table[self.ra], dec=unique_table[self.dec], unit=u.deg)
@@ -324,57 +246,13 @@ class ChandraCatalog:
 
         try :
             if len(unique_table) != 0:
-                print((f"We have detected {len(unique_table)} sources close to {object_name}"))
+                log.info(f"Chandra: {len(unique_table)} sources detected close to {object_name}")
                 return unique_table, nearby_sources_position
             else:
-                print(f"No sources detected close to {object_name}.")
+                log.warning(f"No sources detected close to {object_name}.")
         except Exception as error:
-            print(f"An error occured : {error}")
+            log.warning(f"An error occured : {error}")
             
-    
-    def variability_column(self) -> Table:
-        """
-        Adds a 'Variability' column to the Chandra Source Catalog table based on intra and inter variability probabilities.
-
-        Important:
-            This method calculates a variability score for each source in the Chandra Source Catalog. It uses the 
-            'var_inter_prob_b' and 'var_intra_prob_b' columns from the catalog to compute this score. If both intra and inter 
-            variability probabilities are available for a source, their mean is used as the variability score. If only one of 
-            them is available, that value is used. If both are missing, the variability score is set to 0.0.
-
-        Returns:
-            Table: 
-                The modified astropy Table of the Chandra Source Catalog, now including the 'Variability' column. 
-                This column contains the computed variability scores for each source.
-
-        Note:
-            - The method assumes that the catalog has already been converted to an astropy Table and is accessible via `self.cone_search_catalog`.
-            - Variability probabilities that are masked (not available) are handled as described above.
-            - The method appends the 'Variability' column to the existing table and returns the updated table.
-
-        """
-        
-        cone_catalog = self.cone_search_catalog.to_table()        
-
-        inter, intra = cone_catalog['var_inter_prob_b'], cone_catalog['var_intra_prob_b']
-        var_column = np.array([])
-
-        for inter_value, intra_value in zip(inter, intra):
-            if isinstance(inter_value, np.ma.core.MaskedConstant) and isinstance(intra_value, np.ma.core.MaskedConstant):
-                var_column = np.append(var_column, 0.0)
-            elif isinstance(inter_value, np.ma.core.MaskedConstant) or isinstance(intra_value, np.ma.core.MaskedConstant):
-                if isinstance(inter_value, np.ma.core.MaskedConstant):
-                    var_column = np.append(var_column, intra_value)
-                else:
-                    var_column = np.append(var_column, inter_value)
-            else:
-                mean_value = np.mean([inter_value, intra_value])
-                var_column = np.append(var_column, mean_value)
-                
-        cone_catalog["Variability"] = var_column
-        
-        return cone_catalog
-    
     
     def neighbourhood_of_object(self, radius: Quantity, simulation_data: Dict) -> None:
         """
@@ -382,7 +260,7 @@ class ChandraCatalog:
 
         This method creates a set of plots to visually represent the neighborhood of a celestial object. It uses data from 
         the Chandra Source Catalog and a simulation data dictionary. The plots include the positions of nearby sources, 
-        differentiating between variable and invariant sources. The plots are saved as a PNG file and also displayed.
+        The plot is saved as a PNG file and also displayed.
 
         Args:
             radius (Quantity): The search radius around the celestial object, specified as an astropy Quantity.
@@ -391,7 +269,7 @@ class ChandraCatalog:
                                     'object_data' itself must be a dictionary containing the 'object_name' and 'object_position'.
 
         Note:
-            - The method creates and displays four scatter plots in a 2x2 grid. Each plot shows different aspects of the neighborhood, such as sources from different catalogs and variability information.
+            - The method creates and displays one scatter plot of the nearby sources.
             - The object's position is marked distinctly in each plot.
             - The generated plots are saved to a file in the directory specified in 'os_dictionary' within 'simulation_data'.
             - The method does not return any value.
@@ -407,138 +285,20 @@ class ChandraCatalog:
         object_data = simulation_data["object_data"]
         object_name = object_data["object_name"]
         
-        cs_csc_ra = np.array(list(self.cone_search_catalog[self.ra_cs]), dtype=float)
-        cs_csc_dec = np.array(list(self.cone_search_catalog[self.dec_cs]), dtype=float)
-        
         csc_ra = np.array(self.nearby_sources_table[self.ra], dtype=float)
         csc_dec = np.array(self.nearby_sources_table[self.dec], dtype=float)
-        csc_ra = list(set(csc_ra))
-        csc_dec = list(set(csc_dec))
-        
-        figure_1, axes = plt.subplots(2, 2, figsize=(15, 8), sharex=True, sharey=True)
-        figure_1.suptitle(f"Neighbourhood of {object_name}, radius = {radius}", fontsize=20)
-        figure_1.text(0.5, 0.04, 'Right Ascension [deg]', ha='center', va='center', fontsize=16)
-        figure_1.text(0.04, 0.5, 'Declination [deg]', ha='center', va='center', rotation='vertical', fontsize=16)
 
-        
-        ax00 = axes[0][0]
-        ax00.scatter(csc_ra, csc_dec, s=10, c='black', marker="*", label=f"Sources close to {object_name} : {len(csc_ra)}")
-        ax00.scatter(object_data['object_position'].ra, object_data['object_position'].dec, marker='x', c='red', label=f"{object_name}")
-        ax00.legend(loc='upper right')
-        ax00.set_title("With chandra.fits")
-        
-        ax01 = axes[0][1]
-        ax01.scatter(cs_csc_ra, cs_csc_dec, s=10, c='black', marker="*", label=f"Sources close to {object_name} : {len(cs_csc_ra)}")
-        ax01.scatter(object_data['object_position'].ra, object_data['object_position'].dec, marker='x', c='red', label=f"{object_name}")
-        ax01.legend(loc='upper right')
-        ax01.set_title("With cone search")
-        
-        ax10 = axes[1][0]
+        figure_1, axes = plt.subplots(1, 1, figsize=(8, 8))
+        axes.set_title(f"Neighbourhood of {object_name}, radius = {radius}")
+        axes.scatter(csc_ra, csc_dec, s=10, c='black', marker="*", label=f"Sources close to {object_name} : {len(csc_ra)}")
+        axes.scatter(object_data['object_position'].ra, object_data['object_position'].dec, marker='x', c='red', label=f"{object_name}")
+        axes.set_xlabel('Right Ascension [deg]')
+        axes.set_ylabel('Declination [deg]')
+        axes.legend(loc='upper right')
 
-        cs_ra_var = [ra for index, ra in enumerate(list(self.cone_search_catalog[self.ra_cs])) if self.cone_search_catalog['Variability'][index] != 0.0]
-        cs_ra_invar = [ra for index, ra in enumerate(list(self.cone_search_catalog[self.ra_cs])) if self.cone_search_catalog['Variability'][index] == 0.0]
-
-        cs_dec_var = [dec for index, dec in enumerate(list(self.cone_search_catalog[self.dec_cs])) if self.cone_search_catalog['Variability'][index] != 0.0]
-        cs_dec_invar = [dec for index, dec in enumerate(list(self.cone_search_catalog[self.dec_cs])) if self.cone_search_catalog['Variability'][index] == 0.0]
-
-        ax11 = axes[1][1]
-        ax11.scatter(cs_ra_var, cs_dec_var, s=10, c='darkorange', marker='*', label=f"Var src : {len(cs_ra_var)} sources")
-        ax11.scatter(cs_ra_invar, cs_dec_invar, s=10, c='blue', marker='*', label=f"Invar src : {len(cs_ra_invar)} sources")
-        ax11.scatter(object_data['object_position'].ra, object_data['object_position'].dec, marker='+', s=50, c='red', label=f"{object_name}")
-        ax11.legend(loc="upper right", ncol=2)
-        
         plt.savefig(os.path.join(os_dictionary["img"], f"neighbourhood_of_{object_name}.png".replace(" ", "_")))
         plt.show()
 
-
-    def threshold(self, cone_search_catalog) -> Table:
-        """
-        Corrects flux values in the Chandra Source Catalog by replacing missing or invalid data with minimum valid values.
-
-        This method processes the Chandra Source Catalog to handle missing or invalid flux values. It iterates over various 
-        flux-related columns in the catalog, replacing masked or NaN values with the minimum numerical value found in each 
-        respective column. The method corrects both observed flux values and their errors, across different bands.
-
-        Args:
-            cone_search_catalog (Table): The Chandra Source Catalog, typically an astropy Table, which contains the flux data to be 
-                                corrected.
-
-        Returns:
-            Table: The modified Chandra Source Catalog, with corrected flux values.
-
-        Note:
-            - The method relies on the 'dict_cat.dictionary_catalog' for definitions of the flux columns to be processed.
-            - The flux columns include observed fluxes, their errors, and band-specific fluxes.
-            - The method iterates through each source in the catalog, checking for masked constants or NaN values in these columns and replacing them with the minimum valid value found in the same column.
-            - This correction is applied to ensure more accurate and meaningful analysis of the flux data.
-
-        """
-        
-        source_number = len(cone_search_catalog)
-        key = "CS_Chandra"
-
-        # name : flux_aper_b
-        # algo to replace -- by the min numerical value of the list
-        flux_obs = dict_cat.dictionary_catalog[key]["flux_obs"]
-        flux_data = []
-        for item in range(source_number):
-            # iterate for each item in the list
-            if not isinstance(self.cone_search_catalog[flux_obs][item], np.ma.core.MaskedConstant):
-                # put in flux_data list each item of type different to np.ma.core.MaskedConstant
-                flux_data.append(cone_search_catalog[flux_obs][item])
-        flux = list(cone_search_catalog[flux_obs])
-        corrected_flux_obs = np.nan_to_num(flux, nan=np.min(flux_data))
-        cone_search_catalog[flux_obs] = corrected_flux_obs
-
-        for name in dict_cat.dictionary_catalog[key]["flux_obs_err"]:
-            flux_err = []
-            for item in range(source_number):
-                # iterate for each item in the list
-                if not isinstance(cone_search_catalog[name][item], np.ma.core.MaskedConstant):
-                    # put in flux_err list each item of type different to np.ma.core.MaskedConstant
-                    flux_err.append(cone_search_catalog[name][item])
-            flux_err_obs = list(cone_search_catalog[name])
-            corrected_flux_err_obs = np.nan_to_num(flux_err_obs, nan=np.min(flux_err))
-            cone_search_catalog[name] = corrected_flux_err_obs
-
-        # name : flux_aper__s/m/h
-        # algo to replace -- by the min numerical value of the list
-        for name in dict_cat.dictionary_catalog[key]["band_flux_obs"]:
-            # itera name in band_flux_obs 
-            data = []
-            for item in range(source_number):
-                # iterate for each item in the list
-                if not isinstance(cone_search_catalog[name][item], np.ma.core.MaskedConstant):
-                    # put in data list each item of type different to np.ma.core.MaskedConstant
-                    data.append(cone_search_catalog[name][item])
-            flux = list(cone_search_catalog[name])
-            corrected_flux = np.nan_to_num(flux, nan=np.min(data))
-            cone_search_catalog[name] = corrected_flux
-
-
-        # name : flux_aper_lo/hi_lim_s/m/h
-        err_flux_neg, err_flux_pos = dict_cat.dictionary_catalog[key]["band_flux_obs_err"][0], dict_cat.dictionary_catalog[key]["band_flux_obs_err"][1]
-        # algo to replace -- by the min numerical value of the list
-        for err_name_0, err_name_1 in zip(err_flux_neg, err_flux_pos):
-            neg_data, pos_data = [], []
-            for item in range(source_number):
-                # iterate for each item in the list
-                if not isinstance(cone_search_catalog[err_name_0][item], np.ma.core.MaskedConstant):
-                    # put in neg_data list each item of type different to np.ma.core.MaskedConstant
-                    neg_data.append(cone_search_catalog[err_name_0][item])
-                if not isinstance(cone_search_catalog[err_name_1][item], np.ma.core.MaskedConstant):
-                    # put in pos_data list each item of type different to np.ma.core.MaskedConstant
-                    pos_data.append(cone_search_catalog[err_name_1][item])
-                    
-            neg_flux, pos_flux = list(cone_search_catalog[err_name_0]), list(cone_search_catalog[err_name_1])
-            corrected_neg_flux = np.nan_to_num(neg_flux, nan=np.min(neg_data))
-            corrected_pos_flux = np.nan_to_num(pos_flux, nan=np.min(pos_data))
-            
-            cone_search_catalog[err_name_0] = corrected_neg_flux
-            cone_search_catalog[err_name_1] = corrected_pos_flux
-            
-        return cone_search_catalog
-            
 
     def visualization_interp(self, optimization_parameters, photon_index, key) -> None:
         """
@@ -603,7 +363,6 @@ class ChandraCatalog:
                                  values.
 
         Note:
-            - The method supports different keys for different catalogs (e.g., 'Chandra', 'CS_Chandra').
             - The absorbed power-law fitting is done using the curve_fit function from scipy.optimize.
             - If the fitting process fails, a default photon index value of 1.7 is returned.
             - The optimization parameters are used for plotting in the 'visualization_interp' method.
@@ -615,13 +374,8 @@ class ChandraCatalog:
                            "band_flux_obs_err": dict_cat.dictionary_catalog[key]["band_flux_obs_err"],
                            "energy_band_center": dict_cat.dictionary_catalog[key]["energy_band_center"],
                            "energy_band_half_width": dict_cat.dictionary_catalog[key]["energy_band_half_width"]}
-        
-        if key == "CS_Chandra":
-            interp_data = {"band_flux_obs": dict_cat.dictionary_catalog[key]["band_flux_obs"],
-                           "band_flux_obs_err": dict_cat.dictionary_catalog[key]["band_flux_obs_err"],
-                           "energy_band_center": dict_cat.dictionary_catalog[key]["energy_band_center"],
-                           "energy_band_half_width": dict_cat.dictionary_catalog[key]["energy_band_half_width"]}
-            
+
+
         def absorbed_power_law(energy_band, constant, gamma):
             energy_band = np.array(energy_band, dtype=float)
             sigma = np.array([1e-20, 1e-22, 1e-24], dtype=float)
@@ -658,73 +412,34 @@ class ChandraCatalog:
 
     def get_phoindex_nh(self):
         """
-        Computes and assigns photon index and hydrogen column density (Nh) values for sources in the Chandra Source Catalog and nearby sources.
+        Computes and assigns photon index and hydrogen column density (Nh) values for the nearby sources.
 
-        This method calculates the photon index for each source in the Chandra Source Catalog and a table of nearby sources. 
-        It uses the 'powlaw_gamma' and 'nh_gal' columns from the catalog, along with additional computation for sources 
-        lacking this data. The method updates the tables with new columns for photon index and Nh values and visualizes 
-        the interpolation of photon indices.
+        The photon index of each nearby source is fitted to its band fluxes (optim_index), and N_H is taken from the
+        NHI_HPX map at the source position. Both are added to the table as new columns, and bad fits get the default
+        photon index (c_f.apply_bad_fit_default).
 
         Returns:
-            Tuple[List[float], List[float]]: A tuple containing two lists. The first list contains photon index values for 
-                                            sources in the Chandra Source Catalog. The second list contains photon index 
-                                            values for nearby sources.
-
-        Note:
-            - The method iterates through the Chandra Source Catalog and the nearby sources table, computing photon indices where necessary using the 'get_photon_index' method.
-            - Nh values are calculated based on 'nh_gal' data, with a default value assigned where this data is missing.
-            - The computed photon indices and Nh values are added to the respective tables as new columns.
-            - The method visualizes the photon indices using the 'visualization_interp' method for both the Chandra Source Catalog and nearby sources.
-            - Default photon index and Nh values are used for cases with missing or invalid data.
-
+            List[float]: Photon index values for the nearby sources (before the bad-fit default is applied).
         """
         
         key = "Chandra"
-        cs_key = "CS_Chandra"
-        
-        cs_photon_index_list, photon_index_list = [], []
-        cs_parameters_list, parameters_list = [], []
-        cs_perr_list, perr_list = [], []
-        self.cs_nh_list, self.nh_list = [], []
 
-        for (index, item), nh_value in zip(enumerate(self.cone_search_catalog["powlaw_gamma"]), self.cone_search_catalog["nh_gal"]):
-            # Photon Index
-            if item != 0:
-                cs_photon_index_list.append(item)
-                cs_perr_list.append(0.0)
-            else:
-                photon, params, perr = self.optim_index(key=cs_key, table=self.cone_search_catalog, index=index)
-                cs_parameters_list.append(params)
-                cs_photon_index_list.append(photon)
-                cs_perr_list.append(perr)
-            if nh_value != 0:
-                self.cs_nh_list.append(nh_value*1e20)
-            else:
-                self.cs_nh_list.append(3e20)
-                
-        self.visualization_interp(optimization_parameters=cs_parameters_list, photon_index=cs_photon_index_list, key=cs_key)
+        photon_index_list, parameters_list, perr_list = [], [], []
+        self.nh_list = []
 
         self.nearby_sources_table["Chandra_IAUNAME"] = [n.strip() for n in self.nearby_sources_table["Chandra_IAUNAME"]]
-        #for index, name in enumerate(list(self.cone_search_catalog['name'])): 
         for index, name in enumerate(list(self.nearby_sources_table["Chandra_IAUNAME"])):
             name = name.strip()  # Remove leading/trailing spaces
 
             if name in self.nearby_sources_table["Chandra_IAUNAME"]:
                 nearby_index = list(self.nearby_sources_table["Chandra_IAUNAME"]).index(name)
-                #if self.cone_search_catalog["powlaw_gamma"][index] != 0.0:
-                    #photon_index_list.append(self.cone_search_catalog["powlaw_gamma"][index])
-                print(f"Index : {index} - Name : {name}")
+                log.debug(f"Index : {index} - Name : {name}")
                 #else:
                 photon , params, perr = self.optim_index(key=key, table=self.nearby_sources_table, index=nearby_index)
                 parameters_list.append(params)
                 photon_index_list.append(photon)
                 perr_list.append(perr)
                     
-                #if self.cone_search_catalog["nh_gal"][index] != 0.0:
-
-                #self.nh_list.append(self.cone_search_catalog["nh_gal"][index]*1e20)
-                #else:
-                #self.nh_list.append(3e20)
                 ra_val = self.nearby_sources_table[self.ra][index]
                 dec_val = self.nearby_sources_table[self.dec][index]
                 
@@ -741,54 +456,32 @@ class ChandraCatalog:
         self.nearby_sources_table["Nh"] = self.nh_list
         self.nearby_sources_table["Photon Index Error"] = perr_list
 
-        self.cone_search_catalog["Photon Index"] = cs_photon_index_list
-        self.cone_search_catalog['Nh'] = self.cs_nh_list
-        self.cone_search_catalog["Photon Index Error"] = cs_perr_list
-
         c_f.apply_bad_fit_default(self.nearby_sources_table, iauname_col="Chandra_IAUNAME")
-        c_f.apply_bad_fit_default(self.cone_search_catalog, iauname_col="name")
 
-        return cs_photon_index_list, photon_index_list
+        return photon_index_list
                 
   
     def dictionary_model(self) -> Dict[str, Dict[str, Union[str, float]]]:
         """
-        Constructs dictionaries with model parameters for sources in the Chandra Source Catalog and nearby sources.
+        Constructs a dictionary with model parameters for the nearby sources.
 
-        This method creates two dictionaries, one for the Chandra Source Catalog and another for nearby sources. Each 
-        dictionary contains entries for individual sources, detailing their astrophysical model type (e.g., 'power'), 
-        model values (e.g., photon index), flux values, and column density.
+        Each entry details the source's astrophysical model type (e.g., 'power'), model value (e.g., photon index),
+        flux and column density.
 
         Returns:
-            Dict[str, Dict[str, Union[str, float]]]: A tuple of two dictionaries. The first dictionary corresponds to the 
-                                                    Chandra Source Catalog, and the second to the nearby sources. Each entry 
-                                                    in these dictionaries represents a source, keyed by a unique identifier 
-                                                    (e.g., 'src_0'), and contains information about the source's model, 
-                                                    model value, flux, and column density.
+            Dict[str, Dict[str, Union[str, float]]]: One entry per source, keyed by a unique identifier (e.g., 'src_0'),
+                                                    containing the source's model, model value, flux, and column density.
 
         Note:
-            - The method assumes that the 'Photon Index' and 'Nh' values have already been calculated and added to the respective tables.
+            - The method assumes that the 'Photon Index' and 'Nh' values have already been calculated and added to the table.
             - Currently, the method only handles the 'power' model type. Placeholder code exists for other model types ('black_body', 'temp'), but these are not yet implemented.
             - Each source is assigned a unique key in the dictionary (e.g., 'src_0', 'src_1', etc.).
-            - The method utilizes 'dict_cat.dictionary_catalog' to access flux observation column names for the respective catalogs.
+            - The method utilizes 'dict_cat.dictionary_catalog' to access the flux observation column name.
         """
         
-        model_dictionary, cs_model_dictionary = {}, {}
-        cs_number_source, number_source = len(self.cone_search_catalog), len(self.nearby_sources_table)
+        model_dictionary = {}
+        number_source = len(self.nearby_sources_table)
 
-        cs_model = np.array([], dtype=str)
-        cs_model_value = []
-        for item in range(cs_number_source):
-            cs_model = np.append(cs_model, 'power')
-
-        for item in range(cs_number_source):
-            if cs_model[item] == 'power':
-                cs_model_value = np.append(cs_model_value, self.cone_search_catalog["Photon Index"][item])
-            elif cs_model[item] == 'black_body':
-                pass # Pas de valeur pour le moment...
-            elif cs_model[item] == 'temp':
-                pass # Pas de valeur pour le moment... (dernier model pimms)
-                
         model = np.array([], dtype=str)
         model_value = []
         for item in range(number_source):
@@ -802,18 +495,8 @@ class ChandraCatalog:
             elif model[item] == 'temp':
                 pass # Pas de valeur pour le moment... (dernier model pimms)
 
-        cs_flux = list(self.cone_search_catalog[dict_cat.dictionary_catalog["CS_Chandra"]["flux_obs"]])
         flux = list(self.nearby_sources_table[dict_cat.dictionary_catalog["Chandra"]["flux_obs"]])
 
-        for item in range(cs_number_source):
-            cs_dictionary = {
-                "model": cs_model[item],
-                "model_value": cs_model_value[item],
-                "flux": cs_flux[item],
-                "column_dentsity": self.cs_nh_list[item],
-            }
-            cs_model_dictionary[f"src_{item}"] = cs_dictionary
-        
         for item in range(number_source):
             dictionary = {
                 "model": model[item],
@@ -823,5 +506,5 @@ class ChandraCatalog:
             }
             model_dictionary[f"src_{item}"] = dictionary
 
-        return cs_model_dictionary, model_dictionary
+        return model_dictionary
 

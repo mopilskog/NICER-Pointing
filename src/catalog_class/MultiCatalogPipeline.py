@@ -5,7 +5,7 @@ from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from astropy.table import Table
 from astropy.units import Quantity
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from termcolor import colored
 from typing import Dict, List, Optional
 
@@ -25,6 +25,7 @@ from catalog_class.ChandraClass import ChandraCatalog
 # ---------------------------------- #
 
 import catalog_information as dict_cat
+from function.log_function import log, RESULT
 
 
 # Per-catalog configuration. Only entries that genuinely don't belong in
@@ -63,6 +64,10 @@ class PipelineResult:
     model_dictionary: Dict
     column_dictionary: Dict
     key: str
+    # Merged mode only: the loaded MasterSource records (reused by main.py for
+    # the variability plots) and the merge description for summary.txt.
+    master_sources: Optional[Dict] = None
+    merge_summary: List[str] = field(default_factory=list)
 
 
 class MultiCatalogPipeline:
@@ -89,6 +94,7 @@ class MultiCatalogPipeline:
         self.radius = radius
         self.user_table = user_table
         self.catalog_path = catalog_path
+        self.master_sources = None
 
     def run(self) -> PipelineResult:
         if len(self.catalogs) == 1:
@@ -106,12 +112,10 @@ class MultiCatalogPipeline:
             user_table=self.user_table,
         )
 
-        if cat_key == "Chandra":
-            return self._build_chandra_result(catalog_instance)
         return self._build_standard_result(cat_key, catalog_instance)
 
     def _build_standard_result(self, cat_key: str, catalog_instance) -> PipelineResult:
-        # Identical pattern for XMM / Swift / eRASS1: the per-catalog class
+        # Identical pattern for every catalog: the per-catalog class
         # exposes nearby_sources_table, nearby_sources_position, model_dictionary
         # and we build column_dictionary from dict_cat lookups.
         column_dictionary = self._build_column_dictionary(cat_key)
@@ -122,39 +126,6 @@ class MultiCatalogPipeline:
             model_dictionary=catalog_instance.model_dictionary,
             column_dictionary=column_dictionary,
             key=cat_key,
-        )
-
-    def _build_chandra_result(self, catalog_instance) -> PipelineResult:
-        # Chandra single-catalog mode prompts the user to choose between the
-        # on-disk Chandra catalog and the Harvard cone-search (CS_Chandra).
-        # Same prompt text and retry-on-bad-input loop as the original main.py
-        # branch.
-        prompt = (
-            f"Which Table do you chose to follow the modeling ? "
-            f"{colored('Chandra / CS_Chandra', 'magenta')}\n"
-        )
-        answer = str(input(prompt))
-        while answer not in ("Chandra", "CS_Chandra"):
-            print(f"{colored('Key error ! ', 'red')}. Please retry !")
-            answer = str(input(prompt))
-
-        if answer == "Chandra":
-            nst = catalog_instance.nearby_sources_table
-            nsp = catalog_instance.nearby_sources_position
-            md = catalog_instance.model_dictionary
-        else:  # CS_Chandra
-            nst = catalog_instance.cone_search_catalog
-            nsp = catalog_instance.cs_nearby_sources_position
-            md = catalog_instance.cs_model_dictionary
-
-        column_dictionary = self._build_column_dictionary(answer)
-        self.simulation_data["os_dictionary"]["catalog_key"] = answer
-        return PipelineResult(
-            nearby_sources_table=nst,
-            nearby_sources_position=nsp,
-            model_dictionary=md,
-            column_dictionary=column_dictionary,
-            key=answer,
         )
 
     def _setup_catalog_directory(self, cfg: Dict) -> None:
@@ -256,7 +227,7 @@ class MultiCatalogPipeline:
         master_source_path = os.path.join(catalog_datapath, "Master_source.fits").replace("\\", "/")
         master_cone_path = os.path.join(output_name, "Master_source_cone.fits").replace("\\", "/")
 
-        print(colored(
+        log.debug(colored(
             f"\nBuilding Master_source_cone.fits around RA={ra:.4f}, "
             f"Dec={dec:.4f}, radius={radius_arcmin}'", 'yellow'
         ))
@@ -267,7 +238,7 @@ class MultiCatalogPipeline:
         )
         subprocess.run(shlex.split(cmd))
 
-        print(colored("Cross-matching each catalog with the master-source cone...", 'yellow'))
+        log.debug(colored("Cross-matching each catalog with the master-source cone...", 'yellow'))
         for cat in dict_cat.catalogs:
             path_in = os.path.join(catalog_datapath, cat).replace("\\", "/")
             path_out = os.path.join(output_name, cat).replace("\\", "/")
@@ -340,7 +311,7 @@ class MultiCatalogPipeline:
                     master_name_here = str(master_cone[cat_key][closest]).strip()
                     if master_name_here and master_name_here != "--":
                         ms_id = int(master_cone["MS_ID"][closest])
-                        print(colored(
+                        log.debug(colored(
                             f"  {name} (from {cat_key}) linked to MS_ID={ms_id} via "
                             f"{seps[closest]:.2f}\" position match (master cone "
                             f"already had '{master_name_here}' for {cat_key} at this MS_ID)",
@@ -445,7 +416,7 @@ class MultiCatalogPipeline:
                 keep_idx = i if pi <= pj else j
                 dropped = merged_rows[drop_idx]
                 kept = merged_rows[keep_idx]
-                print(colored(
+                log.debug(colored(
                     f"  post-merge: {dropped['iau_name']} "
                     f"({dropped['origin_catalog']}, MS_ID={dropped['MS_ID']}) "
                     f"folded into {kept['iau_name']} "
@@ -651,71 +622,41 @@ class MultiCatalogPipeline:
             ).replace("\\", "/")
             plt.savefig(out_path, bbox_inches='tight', dpi=150)
             plt.close(fig)
-            print(colored(f"Merged neighborhood plot saved: {out_path}", 'green'))
+            log.debug(colored(f"Merged neighborhood plot saved: {out_path}", 'green'))
 
-    def _write_manifest(self,
-                        stats: Dict,
-                        merged_rows: List[Dict],
-                        seen_ms_ids: Dict[int, str]) -> None:
-        """Write a readable summary of the merge to ``merged/manifest.txt``.
+    def _merge_summary_lines(self, stats: Dict, merged_rows: List[Dict]) -> List[str]:
+        """Readable description of the merge, for summary.txt.
 
-        Per-catalog: how many sources added (with MS_ID vs unmatched), how many
-        superseded by which catalog. Plus skipped catalogs and the user-source
-        count.
+        Per catalog: sources found, sources already in a higher-priority
+        catalog (same MS_ID), sources folded into another source by position
+        (post-merge 3" pass) and sources kept in the final table. Counts are
+        taken after the spatial pass, so they add up to the final table.
         """
-        output_dir = self.simulation_data["os_dictionary"]["catalog_directory"]
-        manifest_path = os.path.join(output_dir, "manifest.txt").replace("\\", "/")
-
-        target = self.simulation_data["object_data"]["object_name"]
-        radius_arcmin = self.radius.to(u.arcmin).value
+        kept = {c: sum(1 for r in merged_rows if r["origin_catalog"] == c) for c in self.catalogs}
         n_user = sum(1 for r in merged_rows if r["origin_catalog"] == "user")
-        total_unmatched = sum(stats["added_unmatched"].values())
+        n_matched = sum(1 for r in merged_rows
+                        if r["origin_catalog"] != "user" and int(r["MS_ID"]) != -1)
+        n_unmatched = sum(1 for r in merged_rows
+                          if r["origin_catalog"] != "user" and int(r["MS_ID"]) == -1)
 
-        lines = []
-        lines.append("Merged-mode manifest")
-        lines.append("=" * 60)
-        lines.append(f"Target:           {target}")
-        lines.append(f"FoV radius:       {radius_arcmin:.1f} arcmin")
-        lines.append(f"Priority order:   {' > '.join(self.catalogs)}")
-        lines.append("")
-        lines.append(f"Final merged table: {len(merged_rows)} sources "
-                     f"({len(seen_ms_ids)} unique MS_IDs + "
-                     f"{total_unmatched} unmatched + {n_user} user)")
-        lines.append("")
-        lines.append("Per-catalog contribution:")
+        lines = [f"Priority order: {' > '.join(self.catalogs)}",
+                 f"Final table: {len(merged_rows)} sources ({n_matched} in Master_source.fits, "
+                 f"{n_unmatched} not in Master_source.fits, {n_user} user-added)",
+                 "",
+                 f"  {'Catalog':<8} {'found':>5} {'in higher-priority catalog':>27} "
+                 f"{'merged by position':>19} {'kept':>5}  already in"]
         for cat in self.catalogs:
             if cat in stats["skipped_empty"]:
-                lines.append(f"  {cat:<8}: 0 nearby sources found (skipped)")
+                lines.append(f"  {cat:<8} {0:>5} {'-':>27} {'-':>19} {0:>5}")
                 continue
-            added_msid = stats["added_by_msid"][cat]
-            added_un = stats["added_unmatched"][cat]
-            total_added = added_msid + added_un
-            sup_parts = [
-                f"{n} by {by_cat}"
-                for by_cat, n in stats["superseded_by"][cat].items()
-                if n > 0
-            ]
-            sup_str = ", ".join(sup_parts) if sup_parts else "none"
-            spatial_merged = stats["spatial_merged"][cat]
-            spatial_str = (
-                f", spatial-merged: {spatial_merged}"
-                if spatial_merged > 0 else ""
-            )
-            lines.append(
-                f"  {cat:<8}: {total_added:>3} added "
-                f"({added_msid} with MS_ID, {added_un} unmatched), "
-                f"superseded: {sup_str}{spatial_str}"
-            )
+            superseded = sum(stats["superseded_by"][cat].values())
+            found = stats["added_by_msid"][cat] + stats["added_unmatched"][cat] + superseded
+            already_in = ", ".join(f"{other} {n}" for other, n in stats["superseded_by"][cat].items() if n > 0)
+            lines.append(f"  {cat:<8} {found:>5} {superseded:>27} "
+                         f"{stats['spatial_merged'][cat]:>19} {kept[cat]:>5}  {already_in}".rstrip())
         if n_user > 0:
-            lines.append(f"  {'user':<8}: {n_user:>3} added "
-                         f"(post-merge from add_sources.fits)")
-
-        lines.append("")
-        lines.append(f"Total unmatched (added with MS_ID=-1): {total_unmatched}")
-
-        with open(manifest_path, 'w') as f:
-            f.write("\n".join(lines) + "\n")
-        print(colored(f"Manifest written: {manifest_path}", 'green'))
+            lines.append(f"  {'user':<8} {n_user:>5} {'-':>27} {'-':>19} {n_user:>5}")
+        return lines
 
     def _append_user_table(self,
                            merged_rows: List[Dict],
@@ -751,7 +692,7 @@ class MultiCatalogPipeline:
         # needs the default Nh lookup.
         nh_table = None
 
-        print(colored(
+        log.info(colored(
             f"\nAppending {len(self.user_table)} user-added source(s) to the "
             f"merged table...", 'yellow', attrs=['underline']
         ))
@@ -802,7 +743,7 @@ class MultiCatalogPipeline:
                 "column_dentsity": nh,
             }
 
-            print(colored(
+            log.info(colored(
                 f"  user source '{name}' at RA={ra:.4f}, DEC={dec:.4f}  "
                 f"PhI={pho_idx:.3f}, Nh={nh:.3e}, Flux={flux:.3e}",
                 'green'
@@ -820,7 +761,7 @@ class MultiCatalogPipeline:
         iauname = str(catalog_instance.nearby_sources_table[
             dict_cat.dictionary_coord[cat_key]["iauname"]
         ][row_idx]).strip()
-        print(colored(
+        log.debug(colored(
             f"Warning: source {iauname} (from {cat_key}) has no MS_ID match in "
             f"Master_source.fits. Adding as new unique entry. Master_source.fits "
             f"may be older than the catalog snapshot.",
@@ -855,11 +796,12 @@ class MultiCatalogPipeline:
         # function/software_function.py (which imports a sibling catalog_class).
         from function.software_function import load_master_sources
 
-        print(colored(
+        log.debug(colored(
             "\nLoading master sources for variability info...",
             'yellow', attrs=['underline'],
         ))
         master_sources = load_master_sources(self._pointings_path())
+        self.master_sources = master_sources
 
         for row in merged_rows:
             ms_id = int(row["MS_ID"])
@@ -948,7 +890,7 @@ class MultiCatalogPipeline:
                 # XmmCatalog / SwiftCatalog / eRASS1Catalog / ChandraCatalog all
                 # call sys.exit() if they find zero nearby sources. Catch that and
                 # move on to the next catalog instead of aborting the merged run.
-                print(colored(f"No nearby sources found in {cat_key}; skipping.", 'yellow'))
+                log.debug(colored(f"No nearby sources found in {cat_key}; skipping.", 'yellow'))
                 stats["skipped_empty"].append(cat_key)
                 continue
 
@@ -964,7 +906,7 @@ class MultiCatalogPipeline:
                     iauname = str(catalog_instance.nearby_sources_table[
                         dict_cat.dictionary_coord[cat_key]["iauname"]
                     ][row_idx]).strip()
-                    print(colored(
+                    log.debug(colored(
                         f"  {iauname} (MS_ID={ms_id}, {cat_key}) superseded by "
                         f"{seen_ms_ids[ms_id]}",
                         'cyan'
@@ -997,7 +939,7 @@ class MultiCatalogPipeline:
         )
 
         if not merged_rows:
-            print(colored("No nearby sources retained from any catalog.", 'red'))
+            log.warning(colored("No nearby sources retained from any catalog.", 'red'))
             sys.exit()
 
         # Look up variability info per merged source from MasterSource records.
@@ -1013,8 +955,7 @@ class MultiCatalogPipeline:
         merged_os_dictionary["catalog_key"] = "merged"
         self.simulation_data["os_dictionary"] = merged_os_dictionary
 
-        # Write the manifest now that os_dictionary points back at merged/.
-        self._write_manifest(stats, merged_rows, seen_ms_ids)
+        merge_summary = self._merge_summary_lines(stats, merged_rows)
 
         # Save the merged-mode neighborhood plot (all sources, colored by
         # origin_catalog, with rings showing every catalog that detected each
@@ -1055,11 +996,12 @@ class MultiCatalogPipeline:
             "data_to_vignetting": ["RA", "DEC", "iau_name"],
         }
 
-        print(colored(
-            f"\nMerged table built: {len(merged_table)} sources from "
-            f"{len(seen_ms_ids)} unique MS_IDs across {self.catalogs}.",
-            'green'
-        ))
+        found = ", ".join(
+            f"{c} {sum(1 for r in merged_rows if r['origin_catalog'] == c)}"
+            for c in self.catalogs + ["user"]
+            if any(r["origin_catalog"] == c for r in merged_rows)
+        )
+        log.info(colored(f"Merged table: {len(merged_table)} nearby sources ({found})", 'green'))
 
         return PipelineResult(
             nearby_sources_table=merged_table,
@@ -1067,4 +1009,6 @@ class MultiCatalogPipeline:
             model_dictionary=merged_model_dict,
             column_dictionary=column_dictionary,
             key="merged",
+            master_sources=self.master_sources,
+            merge_summary=merge_summary,
         )

@@ -19,6 +19,7 @@ from catalog_class import MasterSourceClass
 import os
 import numpy as np
 import catalog_information as dict_cat
+from function.log_function import log, RESULT
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 # ------------------------------ #
@@ -73,13 +74,13 @@ def load_relevant_sources(cat: str, file_to_load: str) -> Dict:
         - Assumes the presence of certain columns in the FITS file, which may vary based on the catalog.
     """
     
-    print(f"Loading {cat}...")
+    log.debug(f"Loading {cat}...")
     try:
         with fits.open(file_to_load, memmap=True) as raw_data:
             sources_raw = Table(raw_data[1].data)
             sources_raw = sources_raw[np.argsort(sources_raw[dict_cat.src_names[cat]])]
     except Exception as error:
-        print(f"An error occured : {colored(error, 'magenta')}")
+        log.warning(f"An error occured : {colored(error, 'magenta')}")
         
     indices_for_source = [i for i in range(1, len(sources_raw)) if (sources_raw[dict_cat.src_names[cat]][i] != sources_raw[dict_cat.src_names[cat]][i - 1])]
 
@@ -208,13 +209,13 @@ def load_master_sources(file_to_load: str) -> Dict:
     """
     
     """Loads the multi-instruments sources in a dictionary"""
-    print(f"Loading Master Sources...")
+    log.debug(f"Loading Master Sources...")
     path_file_to_load = os.path.join(file_to_load, 'Master_source_cone.fits').replace("\\", "/")
     try:
         with fits.open(path_file_to_load, memmap=True) as raw_data:
             sources_raw = Table(raw_data[1].data)
     except Exception as error:
-        print(f"An error occured : {colored(error, 'magenta')}")
+        log.warning(f"An error occured : {colored(error, 'magenta')}")
         
     tab_catalog_sources = {}
     for cat in dict_cat.catalogs:
@@ -222,7 +223,7 @@ def load_master_sources(file_to_load: str) -> Dict:
         try:
             tab_catalog_sources[cat] = load_relevant_sources(cat, catalog_path)
         except Exception as error:
-            print(f"No sources detected in {cat} catalog !")
+            log.debug(f"No sources detected in {cat} catalog !")
         
     dict_master_sources = {}
     for line in tqdm(sources_raw):
@@ -239,7 +240,7 @@ def load_master_sources(file_to_load: str) -> Dict:
         ms = MasterSourceClass.MasterSource(ms_id, tab_sources_for_this_ms, line["MS_RA"], line["MS_DEC"], line["MS_POSERR"])
         dict_master_sources[ms_id] = ms
         
-    print("Master sources loaded!")
+    log.debug("Master sources loaded!")
     return dict_master_sources
 
 

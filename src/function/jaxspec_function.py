@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 import scienceplots  # noqa: F401  registers 'science' / related styles with matplotlib
 import jax.numpy as jnp
 import catalog_information as dict_cat
+from function.log_function import log, RESULT
 
 # Silence matplotlib's texmanager INFO log about "No LaTeX-compatible font found
 # for the serif fontfamily in rcParams". The rendering still uses Computer Modern
@@ -96,7 +97,7 @@ def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, key) 
         - Spectra are generated using the 'fakeit_for_multiple_parameters' function, based on the model and instrument.
         - The function is tailored for astrophysical spectral analysis and may require specific data formats.
     """
-    print(f"\n{colored('Modeling spectra...', 'yellow', attrs=['underline'])}")
+    log.info(f"\n{colored('Modeling spectra...', 'yellow', attrs=['underline'])}")
     total_spectra = []
     size = 100
 
@@ -110,7 +111,7 @@ def modeling_source_spectra(nearby_sources_table: Table, obsconfig, model, key) 
         # underlying curve_fit didn't converge and the value is unreliable.
         # Use the catalog-class default (1.7) with no error propagation.
         if pho_idx_err > 2.0:
-            print(colored(
+            log.debug(colored(
                 f"  Bad fit for {iauname} (PhI={pho_idx:.3f} ± {pho_idx_err:.3f}); "
                 f"using default alpha=1.7, no sampling.",
                 'yellow'
@@ -217,11 +218,6 @@ def total_plot_spectra(total_spectra: List, obsconfig, simulation_data: Dict, ca
         - Assumes `instrument` has an attribute `out_energies` for energy values.
         - The function is designed for astrophysical spectral analysis and visualization.
         
-    Here is an example of the plot create by this method:
-        
-    .. image:: C:/Users/plamb_v00y0i4/OneDrive/Bureau/Optimal_Pointing_Point_Code/modeling_result/PSR_J0437-4715/Chandra/img/CS_Chandra_spectral_modeling_close_to_PSR_J0437-4715.png
-        :align: center
-    
     """
     
     object_data = simulation_data["object_data"]
@@ -920,5 +916,5 @@ def write_pha_file(total_spectra: List, obsconfig, simulation_data: Dict, key: s
         f"{key}_nearby_sources_{object_data['object_name']}.pha".replace(" ", "_"),
     ).replace("\\", "/")
     fits.HDUList([fits.PrimaryHDU(), spectrum_hdu, sources_hdu, source_spectra_hdu]).writeto(pha_path, overwrite=True)
-    print(f"\nSpectrum file of the nearby sources has been created in {colored(pha_path, 'blue')}")
+    log.log(RESULT, f"\nSpectrum file of the nearby sources has been created in {colored(pha_path, 'blue')}")
     return pha_path

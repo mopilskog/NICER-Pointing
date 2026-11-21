@@ -13,6 +13,7 @@ import sys
 import subprocess
 import numpy as np
 import matplotlib.pyplot as plt
+from function.log_function import log, RESULT
 
 # ------------------------------ #
 
@@ -106,7 +107,7 @@ def exclude_target_from_nearby_sources(nearby_sources_table: Table,
 
     if closest_sep < threshold_arcsec:
         excluded_name = nearby_sources_table[iauname_col][closest_idx]
-        print(colored(
+        log.debug(colored(
             f"Excluded {excluded_name} at {closest_sep:.2f}\" from {object_name} "
             f"(within {threshold_arcsec}\" threshold — assumed to be the target itself).",
             'yellow'
@@ -140,7 +141,7 @@ def apply_bad_fit_default(table: Table,
         pho_idx = float(table["Photon Index"][index])
         pho_idx_err = float(table["Photon Index Error"][index])
         if pho_idx_err > threshold:
-            print(colored(
+            log.debug(colored(
                 f"  Bad fit for {str(table[iauname_col][index]).strip()} "
                 f"(PhI={pho_idx:.3f} ± {pho_idx_err:.3f}); using default "
                 f"PhI={default_photon_index}, error 0.",
@@ -168,16 +169,16 @@ def signal_to_noise(SrcCtsRate, BkgSrcRates, InstBkgd, ExpTime) -> float:
     return SNR
 
 
-def nominal_pointing_info(simulation_data, NearbySRCposition) -> None:
+def nominal_pointing_info(simulation_data, NearbySRCposition) -> Dict:
     """
-    Calculate and print various information related to nominal pointing.
+    Calculate and log the S/N and count rates for the nominal pointing (on target).
 
     Args:
-        SIM_parameters (dict): Dictionary containing simulation parameters.
+        simulation_data (dict): Dictionary containing simulation parameters.
         NearbySRCposition (SkyCoord): Coordinates of nearby sources.
 
     Returns:
-        None
+        Dict: 'snr' (S/N of the target) and 'src_rate' (summed count rate of the nearby sources, cts/s).
     """
 
     object_data = simulation_data['object_data']
@@ -187,14 +188,12 @@ def nominal_pointing_info(simulation_data, NearbySRCposition) -> None:
     SRCscaleRates = scaled_ct_rate(SRCnominalDIST, simulation_data["nearby_sources_table"]["count_rate"], telescop_data["EffArea"], telescop_data["OffAxisAngle"])
     PSRcountrates = object_data['count_rate']
 
-    print('PSR S/N at Nominal Pointing ' + str(signal_to_noise(PSRcountrates, SRCscaleRates, simulation_data["INSTbkgd"], simulation_data["EXPtime"])))
-    print("PSR count rate at Nominal pointing = " + str(PSRcountrates) + "cts/sec")
-    print("BKG sources count rate at Nominal Pointing = " + str(np.sum(SRCscaleRates)) + "cts/sec")
-    print("             Individual BKG Sources rates:")
-    print(str(SRCscaleRates))
-    print("             BKG sources distance from PSR (\')")
-    print(SRCnominalDIST)
-    print("--------------------------------------------------")
+    snr_nominal = signal_to_noise(PSRcountrates, SRCscaleRates, simulation_data["INSTbkgd"], simulation_data["EXPtime"])
+    log.info(f"Nominal pointing (on target): S/N {float(snr_nominal):.1f}, target {PSRcountrates} cts/s, "
+             f"nearby sources {np.sum(SRCscaleRates):.4f} cts/s")
+    log.debug("Nearby-source count rates at the nominal pointing (cts/s):\n" + str(SRCscaleRates))
+    log.debug("Nearby-source distances from the target (arcmin):\n" + str(SRCnominalDIST))
+    return {"snr": float(snr_nominal), "src_rate": float(np.sum(SRCscaleRates))}
 
 
 def calculate_opti_point(simulation_data, nearby_src_position) -> Tuple[int, float, float, dict]:
@@ -286,15 +285,12 @@ def optimal_point_infos(vector_dictionary, OptimalPointingIdx, SRCoptimalRATES) 
     """
 
     # Print info for the optimal NICER pointing that maximizes the S/N ratio
-    print ("PSR S/N at Optimal Pointing " + str(vector_dictionary['SNR'][OptimalPointingIdx]))
-    print ("PSR count rate at Optimal pointing = " + str(vector_dictionary["PSRrates"][OptimalPointingIdx]) + " cts/sec")
-    print ("BKG sources count rate at Optimal pointing = " + str(vector_dictionary["SRCrates"][OptimalPointingIdx]) + " cts/sec")
-    print ("     Individual BKG Sources: " )
-    print (str(SRCoptimalRATES))
-    #print "     Distance from Optimal Pointing (\")"
-    #print str(SRCoptimalSEPAR)
-    print ("Optimal Pointing:  " + str(vector_dictionary["SampleRA"][OptimalPointingIdx]) + "  " + str(vector_dictionary["SampleDEC"][OptimalPointingIdx]))
-    print ("----------------------------------------------------------------------")
+    log.log(RESULT, f"Optimal pointing: RA {vector_dictionary['SampleRA'][OptimalPointingIdx]:.5f}, "
+                    f"Dec {vector_dictionary['SampleDEC'][OptimalPointingIdx]:.5f} deg")
+    log.log(RESULT, f"  S/N {float(vector_dictionary['SNR'][OptimalPointingIdx]):.1f}, "
+                    f"target {float(vector_dictionary['PSRrates'][OptimalPointingIdx]):.4f} cts/s, "
+                    f"nearby sources {float(vector_dictionary['SRCrates'][OptimalPointingIdx]):.4f} cts/s")
+    log.debug("Nearby-source count rates at the optimal pointing (cts/s):\n" + str(SRCoptimalRATES))
 
 
 def data_map(simulation_data: Dict, vector_dictionary: Dict, OptimalPointingIdx: int, NearbySRCposition: SkyCoord) -> None:
@@ -444,11 +440,10 @@ def vignetting_factor(OptimalPointingIdx, vector_dictionary, simulation_data, da
     max_vignet, min_distance  = np.max(vignetting_factor), np.min(distance)
     max_vignet_index, min_distance_index = np.argmax(vignetting_factor), np.argmin(distance)
     
-    print(f"\nThe closest source of the optimal pointing point is : {colored(nearby_sources_table[name][min_distance_index], 'magenta')}.")
-    print(f"The distance between {colored(nearby_sources_table[name][min_distance_index], 'yellow')} and optimal pointing point is {colored(min_distance, 'blue')} arcmin.\n"
-          f"With a vignetting factor of : {colored(max_vignet, 'light_green')} ")
-    print(f"The distance between {colored(object_data['object_name'], 'yellow')} and optimal pointing point is {colored(distance_psr_to_optipoint, 'blue')} arcmin,\n"
-          f"with a vignetting factor of : {colored(vignetting_factor_psr2optipoint, 'light_green')}")
+    log.debug(f"Closest nearby source to the optimal pointing: {nearby_sources_table[name][min_distance_index]} "
+              f"at {min_distance:.3f} arcmin (vignetting {max_vignet:.3f})")
+    log.log(RESULT, f"  Target is {distance_psr_to_optipoint:.3f} arcmin from the optimal pointing "
+                    f"(vignetting {float(vignetting_factor_psr2optipoint):.3f})")
     
     nearby_sources_table["vignetting_factor"] = vignetting_factor
 
@@ -475,11 +470,6 @@ def write_fits_file(nearby_sources_table, simulation_data, interactive=False) ->
         # Find the longest name & Convert all entries to the uniform max length
         cat_name = key + "_IAUNAME"
         #print(cat_name)
-        if key =="CS_Chandra":
-            cat_name = "name"
-            max_len = max(len(str(col_name)) for col_name in nearby_sources_table["likelihood_class"])
-            nearby_sources_table["likelihood_class"] = np.array([str(col_name).ljust(max_len) for col_name in nearby_sources_table["likelihood_class"]])
-
         if key =="eRASS1":
             cat_name = "eRASS_IAUNAME"
         
@@ -494,17 +484,17 @@ def write_fits_file(nearby_sources_table, simulation_data, interactive=False) ->
 
         
         nearby_sources_table.write(nearby_sources_table_path, format='fits', overwrite=True)
-        print(f"Nearby sources table was created in : {colored(nearby_sources_table_path, 'magenta')}")
+        log.log(RESULT, f"Nearby sources table was created in : {colored(nearby_sources_table_path, 'magenta')}")
         
         if interactive:
             topcat_path = os_dictionary["topcat_software_path"]
 
             command = ['java', '-jar', topcat_path, nearby_sources_table_path]  # Command as a list
             subprocess.run(command, check=True)  # check=True raises an error if the command fails
-            print("Opened FITS file with TOPCAT")
+            log.debug("Opened FITS file with TOPCAT")
             
     except Exception as error:
-        print(f"{colored('An error occured : ', 'red')} {error}")
+        log.warning(f"{colored('An error occured : ', 'red')} {error}")
     
     
 def modeling(vignetting_factor: List, simulation_data: Dict, column_dictionary: Dict, catalog_name: str) -> None:

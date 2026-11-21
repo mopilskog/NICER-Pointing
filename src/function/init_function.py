@@ -13,6 +13,7 @@ import os
 import argparse
 import numpy as np
 import openpyxl
+from function.log_function import log, RESULT
 
 # ------------------------------ #
 
@@ -61,7 +62,7 @@ def is_valid_file_path(file_path) -> bool:
         else:
             return False
     except Exception as error:
-        print(f"An error occured: {error}")
+        log.warning(f"An error occured: {error}")
 
 
 def get_valid_file_path(path) -> str:
@@ -76,67 +77,64 @@ def get_valid_file_path(path) -> str:
     """
     while True :
         if is_valid_file_path(path):
-            print(f"The file at {colored(path, 'yellow')} is {colored('valid', 'green')}.")
+            log.debug(f"The file at {colored(path, 'yellow')} is {colored('valid', 'green')}.")
             break
         else:
-            print(f"The file at {colored(path, 'yellow')} doesn't exist or the path is {colored('invalid', 'red')}.")
+            log.warning(f"The file at {colored(path, 'yellow')} doesn't exist or the path is {colored('invalid', 'red')}.")
             path = str(input("Enter the file path : \n"))
     return path
 
 
-def choose_catalog(args_catalog) -> Tuple[str, str]:
+def choose_catalog(args_catalog, interactive: bool = False) -> Tuple[str, str]:
     """
     Choose a catalog based on the provided keyword and return a valid file path for it.
 
+    Without --catalog the merged mode (all catalogs) is used. With
+    --interactive the user is asked first; pressing Enter keeps merged.
+
     Args:
-        Catalog (str): The catalog keyword, should be 'DR11' or 'DR13'.
+        args_catalog (str or None): The catalog keyword: Xmm_DR13, CSC_2.0, Swift, eRASS1 or merged.
+        interactive (bool): Ask for the catalog when none was given.
 
     Returns:
-        str: A valid file path for the selected catalog.
-
-    Raises:
-        argparse.ArgumentError: If an invalid catalog keyword is provided.
+        Tuple[str, str]: A valid file path for the selected catalog ('merged' in merged mode) and the catalog keyword.
     """
+    if args_catalog is None:
+        if interactive:
+            answer = input("Catalog (Xmm_DR13, CSC_2.0, Swift, eRASS1 or merged) [merged]: ").strip()
+            args_catalog = answer if answer else "merged"
+        else:
+            args_catalog = "merged"
+            log.info("Tip: merged mode is the default. Use --catalog Xmm_DR13, CSC_2.0, Swift or eRASS1 "
+                     "for a single catalog.")
     active_workflow = os.getcwd().replace("\\", "/")
     catalog_datapath = os.path.join(active_workflow, "data/catalog_data").replace("\\", "/")
     while True:
         try:
             if args_catalog == 'Xmm_DR13':
-                print("\n")
-                print(f"{colored(args_catalog, 'yellow')} catalog is loading")
+                log.info(f"{colored(args_catalog, 'yellow')} catalog is loading")
                 xmm_path = os.path.join(catalog_datapath, "4XMM_slim_DR13cat_v1.0.fits").replace("\\", "/")
-                print("-"*50)
                 valid_path = get_valid_file_path(xmm_path)
-                print("-"*50, "\n")
                 return valid_path, args_catalog
             elif args_catalog == 'CSC_2.0':
-                print("\n")
-                print(f"{colored(args_catalog, 'yellow')} catalog is loading")
+                log.info(f"{colored(args_catalog, 'yellow')} catalog is loading")
                 chandra_path = os.path.join(catalog_datapath, "Chandra.fits").replace("\\", "/")
-                print("-"*50)
                 valid_path = get_valid_file_path(chandra_path)
-                print("-"*50, "\n")
                 return valid_path, args_catalog
             elif args_catalog == 'Swift':
-                print("\n")
-                print(f"{colored(args_catalog, 'yellow')} catalog is loading")
+                log.info(f"{colored(args_catalog, 'yellow')} catalog is loading")
                 swift_path = os.path.join(catalog_datapath, "Swift.fits").replace("\\", "/")
-                print("-"*50)
                 valid_path = get_valid_file_path(swift_path)
-                print("-"*50, "\n")
                 return valid_path, args_catalog
             elif args_catalog == 'eRASS1':
-                print("\n")
-                print(f"{colored(args_catalog, 'yellow')} catalog is loading")
+                log.info(f"{colored(args_catalog, 'yellow')} catalog is loading")
                 eRASS1_path = os.path.join(catalog_datapath, "eRASS1.fits").replace("\\", "/")
-                print("-"*50)
                 valid_path = get_valid_file_path(eRASS1_path)
-                print("-"*50, "\n")
                 return valid_path, args_catalog
             elif args_catalog == "merged":
                 # Merged mode iterates the priority list internally; no single
                 # FITS path to return.
-                print(colored("merged mode (XMM > Swift > eRASS1 > Chandra)", "yellow"))
+                log.info(colored("merged mode (XMM > Swift > eRASS1 > Chandra)", "yellow"))
                 return 'merged', 'merged'
             else:
                 raise argparse.ArgumentError(None, "invalid catalog keyword keyword. retry with Xmm_DR13, CSC_2.0, Swift, eRASS1 or merged.")
@@ -241,7 +239,7 @@ def add_source_list(active_workflow,  interactive = False) -> Table:
         errors. If the user decides not to add sources, the function returns an empty Table object.
     """
     if not interactive:
-        print("Interactive mode is disabled. Skipping additional source input.")
+        log.debug("Interactive mode is disabled. Skipping additional source input.")
         return Table()
     
     print(f"You can add a {colored('.fits', 'blue')} file to your modeling ! ")

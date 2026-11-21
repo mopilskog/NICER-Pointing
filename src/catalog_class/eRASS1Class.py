@@ -16,6 +16,7 @@ from tqdm import tqdm
 import function.unique_function as u_f
 import function.calculation_function as c_f
 import function.init_function as i_f
+from function.log_function import log, RESULT
 # ------------------------------------- #
 import os
 import sys
@@ -208,7 +209,7 @@ class eRASS1Catalog:
         nearby_sources_table = Table(names=self.eRo_catalog.colnames,
                                      dtype=self.eRo_catalog.dtype)
 
-        print(fr"{colored('Reducing Swift catalog...', 'yellow')} to fov of {radius.value + 5 } arcmin")
+        log.debug(fr"{colored('Reducing eRASS1 catalog...', 'yellow')} to fov of {radius.value + 5 } arcmin")
         for number in tqdm(range(len(self.eRo_catalog))):
             #print(self.eRo_catalog[self.ra][number], self.eRo_catalog[self.dec][number])
             if min_ra/u.deg < self.eRo_catalog[self.ra][number] < max_ra/u.deg and min_dec/u.deg < self.eRo_catalog[self.dec][number] < max_dec/u.deg:
@@ -216,7 +217,7 @@ class eRASS1Catalog:
 
         src_position = SkyCoord(ra=small_table[self.ra], dec=small_table[self.dec], unit=u.deg)
                 
-        print(f"{colored(f'Find sources close to {object_name} with eRASS1 catalog', 'blue')}")
+        log.debug(f"{colored(f'Find sources close to {object_name} with eRASS1 catalog', 'blue')}")
         for number in tqdm(range(len(small_table))):
             if c_f.ang_separation(object_position, src_position[number]) < radius:
                 nearby_sources_table.add_row(small_table[number])
@@ -230,9 +231,9 @@ class eRASS1Catalog:
             try:
                 unique_table = u_f.create_unique_sources_catalog(nearby_sources_table=nearby_sources_table, column_name=column_name)
             except Exception as error:
-                print(f"{colored('An error occured : ', 'red')} {error}")
+                log.warning(f"{colored('An error occured : ', 'red')} {error}")
         else:
-            print("Nearby sources table from Swift catalog is empty.")
+            log.debug("Nearby sources table from eRASS1 catalog is empty.")
             sys.exit()
         
            
@@ -249,13 +250,13 @@ class eRASS1Catalog:
 
         try :
             if len(unique_table) != 0:
-                print((f"We have detected {len(unique_table)} sources close to {object_data['object_name']}"))
+                log.info(f"eRASS1: {len(unique_table)} sources detected close to {object_data['object_name']}")
                 return unique_table, nearby_sources_position
             else:
-                print(f"No sources detected close to {object_data['object_name']}.")
+                log.warning(f"No sources detected close to {object_data['object_name']}.")
                 sys.exit()
         except Exception as error:
-            print(f"An error occured : {error}")
+            log.warning(f"An error occured : {error}")
     
     
     def neighbourhood_of_object(self, simulation_data: dict, radius: Quantity) -> None:

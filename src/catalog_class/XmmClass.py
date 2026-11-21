@@ -19,6 +19,7 @@ import csv
 
 import function.init_function as i_f
 import function.calculation_function as c_f
+from function.log_function import log, RESULT
 
 # ------------------------------------- #
 
@@ -278,13 +279,13 @@ class XmmCatalog:
         nearby_src_table = Table(names=self.xmm_catalog.colnames,
                                  dtype=self.xmm_catalog.dtype)
         
-        print(fr"{colored('Reducing XMM catalog...', 'yellow')} to fov of {radius.value + 5 } arcmin")
+        log.debug(fr"{colored('Reducing XMM catalog...', 'yellow')} to fov of {radius.value + 5 } arcmin")
         for number in tqdm(range(len(self.xmm_catalog))):
             if min_ra/u.deg < self.xmm_catalog[self.ra][number] < max_ra/u.deg and min_dec/u.deg < self.xmm_catalog[self.dec][number] < max_dec/u.deg:
                 small_table.add_row(self.xmm_catalog[number])
 
         src_position = SkyCoord(ra=small_table[self.ra], dec=small_table[self.dec], unit=u.deg)
-        print(f"{colored(f'Find sources close to {object_name} with XMM catalog', 'blue')}")
+        log.debug(f"{colored(f'Find sources close to {object_name} with XMM catalog', 'blue')}")
         for number in tqdm(range(len(small_table))):
             if c_f.ang_separation(object_position, src_position[number]) < radius:
                 nearby_src_table.add_row(small_table[number])
@@ -301,13 +302,13 @@ class XmmCatalog:
 
         try:
             if len(nearby_src_table) != 0:
-                print((f"We have detected {len(nearby_src_table)} sources close to {object_name}.\n"))
+                log.info(f"XMM: {len(nearby_src_table)} sources detected close to {object_name}")
                 return nearby_src_table, nearby_src_position
             else:
-                print(f"No sources detected close to {object_name}.")
+                log.warning(f"No sources detected close to {object_name}.")
                 sys.exit()
         except Exception as error:
-            print(f"An error occured : {error}")
+            log.warning(f"An error occured : {error}")
             
        
     def optim_index(self, number: int) -> Tuple[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray], Tuple[float, float],Tuple[float]]:
@@ -463,7 +464,7 @@ class XmmCatalog:
                 index_dr11 = np.append(index_dr11, index)
                 xmm_dr_11_table.add_row(self.xmm_dr11_catalog[index])
             else:
-                print(f"{colored('Missing data in Xmm_DR11 : ', 'red')} {name}")
+                log.debug(f"{colored('Missing data in Xmm_DR11 : ', 'red')} {name}")
                 index_dr11 = np.append(index_dr11, np.nan)
 
         index_x2a = np.array([], dtype=int)
@@ -649,9 +650,9 @@ class XmmCatalog:
             variability_table[name] = data
 
         message_xmm = f"Among {len(self.nearby_sources_table)} sources detected close to {object_name}, {len(index_array)} of them are variable. Using DR13 Catalog."
-        print(message_xmm)
+        log.debug(message_xmm)
         message_xmm2ath = f"Among {len(index_array)} variable sources, {list(variability_table['IN_X2A']).count(True)} are in Xmm2Athena and {list(variability_table['IN_X2A']).count(False)} are not in Xmm2Athena. "    
-        print(message_xmm2ath)
+        log.debug(message_xmm2ath)
 
         return variability_table
     
@@ -688,7 +689,6 @@ class XmmCatalog:
             :align: center
         """
 
-        print("\n")
         object_data = simulation_data["object_data"]
         object_name = object_data['object_name']
         obj_ra, obj_dec = object_data['object_position'].ra, object_data['object_position'].dec
@@ -698,7 +698,7 @@ class XmmCatalog:
             xmm_obs_id = list(xmm_epic["observation_id"])
             result_fits_images = ESASky.get_images(observation_ids=xmm_obs_id[0], radius=radius, missions="XMM")
         except Exception as error:
-            print(f"{colored('An error occured : ', 'red')} {error}")
+            log.debug(f"No ESASky XMM image for the neighbourhood plot: {error}")
             result_fits_images = {}
             
         
@@ -783,7 +783,6 @@ class XmmCatalog:
         os_dictionary = simulation_data["os_dictionary"]
         plt.savefig(os.path.join(os_dictionary["img"], f"neighbourhood_of_{object_name}.png".replace(" ", "_")))
         plt.close()
-        print("\n")
 
 
     def dictionary_model(self) -> Dict[str, Dict[str, Union[str, float]]]:
