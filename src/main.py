@@ -422,10 +422,18 @@ def main():
     verbosity_group.add_argument('--quiet', '-q', action='store_true',
                                  help="Show only warnings, errors and the final results in the console")
 
+    # Temporary: CDS Strasbourg (SIMBAD) is offline since Nov 2026. Remove once it is back.
+    parser.add_argument('--simbad-mirror', action='store_true',
+                        help="Query the SIMBAD mirror at Harvard instead of CDS Strasbourg")
+
     args = parser.parse_args()
 
     # Console detail chosen by the user; everything is always written to run.log.
     setup_logging("verbose" if args.verbose else "quiet" if args.quiet else "normal")
+
+    if args.simbad_mirror:
+        Simbad.server = "simbad.harvard.edu"
+        log.info("Using the SIMBAD mirror at simbad.harvard.edu")
 
     psr_name = np.array(["PSR J0437-4715", "PSR J2124-3358", "PSR J0751+1807", "PSR J1231-1411"], dtype=str)
     psr_coord = np.array([f"{i_f.get_coord_psr(name).ra} {i_f.get_coord_psr(name).dec}" for name in psr_name])
